@@ -1,0 +1,7 @@
+__pycache__
+pretrained/*
+result*
+work_dirs
+*/__pycache__
+*/*/__pycache__/
+*/*/*/__pycache__/
