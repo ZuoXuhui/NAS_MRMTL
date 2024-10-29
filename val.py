@@ -57,7 +57,6 @@ class Evaluator(object):
             processed_pred += self.scale_process(modal_x_scale, modal_y_scale,
                                                  (ori_rows, ori_cols),
                                                  crop_size, stride_rate)
-            print(processed_pred[:,:,0].max(), "     ", processed_pred[:,:,1].max())
         
         pred = processed_pred.argmax(2)
         return pred

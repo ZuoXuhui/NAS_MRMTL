@@ -1,5 +1,6 @@
 in_chans: 3
 num_classes: 9
+arch: 'SingleTaskNet'
 backbone: 'mit_b4'
 log_level: 'INFO'
 

@@ -54,7 +54,7 @@ def parse_args():
         help='the pretrained ckpt file to load from')
     parser.add_argument(
         '--resume-from',
-        # default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/work_dirs/MFNet_mit_b4_nddr/epoch-50.pth",
+        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/work_dirs/MFNet_mit_b4_nddr_fuison/epoch-20.pth",
         help='the checkpoint file to resume from')
     group_gpus = parser.add_mutually_exclusive_group()
     group_gpus.add_argument(
@@ -134,10 +134,12 @@ def main():
         BatchNorm2d = nn.SyncBatchNorm
     else:
         BatchNorm2d = nn.BatchNorm2d
-
-    from models import SingleTaskNet
-    model = SingleTaskNet(cfg, norm_layer=BatchNorm2d)
-    # logger.info(model)
+    
+    if cfg.arc == "SingleTaskNet":
+        from models import SingleTaskNet
+        model = SingleTaskNet(cfg, norm_layer=BatchNorm2d)
+    
+    logger.info(f"{cfg.arch} model init done")
 
     # set dataloader
     from datasets import Train_pipline
