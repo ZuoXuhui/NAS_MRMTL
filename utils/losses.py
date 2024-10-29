@@ -92,10 +92,12 @@ class fusion_loss:
         fuse = fuse * Mask
 
         YCbCr_fuse = RGB2YCrCb(fuse)
+        Y_fuse = YCbCr_fuse[:,0:1,:,:]
         Cr_fuse = YCbCr_fuse[:,1:2,:,:]
         Cb_fuse = YCbCr_fuse[:,2:,:,:]
 
         YCbCr_img1 = RGB2YCrCb(img1)
+        Y_img1 = YCbCr_img1[:,0:1,:,:]
         Cr_img1 = YCbCr_img1[:,1:2,:,:]
         Cb_img1 = YCbCr_img1[:,2:,:,:]
 
@@ -105,9 +107,10 @@ class fusion_loss:
 
         joint_grad_x = torch.maximum(img1_grad_x, img2_grad_x)
         joint_grad_y = torch.maximum(img1_grad_y, img2_grad_y)
-        joint_int  = torch.maximum(img1, img2)
+        # joint_int  = torch.maximum(img1, img2)
+        joint_int  = torch.maximum(Y_img1, img2[:,0:1,:,:])
 
-        con_loss = self.l1_loss(fuse, joint_int)
+        con_loss = self.l1_loss(Y_fuse, joint_int)
         gradient_loss = 0.5*self.l1_loss(fuse_grad_x, joint_grad_x) + 0.5*self.l1_loss(fuse_grad_y, joint_grad_y)
         color_loss = self.l1_loss(Cr_fuse, Cr_img1) + self.l1_loss(Cb_fuse, Cb_img1)
 
