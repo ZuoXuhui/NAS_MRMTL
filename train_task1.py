@@ -46,7 +46,7 @@ def set_random_seed(seed, deterministic=False):
 def parse_args():
     parser = argparse.ArgumentParser(description='Train')
     parser.add_argument('--config',
-                        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/config/MFNet_mit_b4_nddr_fuison.yaml",
+                        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/config/MFNet_mit_b4_nddr_task1.yaml",
                         help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(
@@ -54,7 +54,7 @@ def parse_args():
         help='the pretrained ckpt file to load from')
     parser.add_argument(
         '--resume-from',
-        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/work_dirs/MFNet_mit_b4_nddr_fuison/epoch-140.pth",
+        # default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/work_dirs/MFNet_mit_b4_nddr_fuison/epoch-140.pth",
         help='the checkpoint file to resume from')
     group_gpus = parser.add_mutually_exclusive_group()
     group_gpus.add_argument(
@@ -135,9 +135,8 @@ def main():
     else:
         BatchNorm2d = nn.BatchNorm2d
     
-    if cfg.arch == "SingleTaskNet":
-        from models import SingleTaskNet
-        model = SingleTaskNet(cfg, norm_layer=BatchNorm2d)
+    from models import SegTaskNet
+    model = SegTaskNet(cfg, norm_layer=BatchNorm2d)
     
     logger.info(f"{cfg.arch} model init done")
 
@@ -202,25 +201,19 @@ def main():
         dataloader = iter(train_loader)
 
         sum_loss = 0
-        sum_loss_task1 = 0
-        sum_loss_task2 = 0
 
         for idx in pbar:
             minibatch = dataloader.next()
             modal_x = minibatch['modal_x']
             modal_y = minibatch['modal_y']
             label = minibatch['label']
-            Mask = minibatch['Mask']
 
             modal_x = modal_x.cuda(non_blocking=True)
             modal_y = modal_y.cuda(non_blocking=True)
             label = label.cuda(non_blocking=True)
-            Mask = Mask.cuda(non_blocking=True)
 
-            results = model.loss(modal_x, modal_y, label, Mask)
+            results = model.loss(modal_x, modal_y, label)
             loss = results.loss
-            task1_loss = results.loss1
-            task2_loss = results.loss2
 
             optimizer.zero_grad()
             loss.backward()
@@ -233,24 +226,18 @@ def main():
                 optimizer.param_groups[i]['lr'] = lr
 
             sum_loss += loss
-            sum_loss_task1 += task1_loss
-            sum_loss_task2 += task2_loss
             print_str = 'Epoch {}/{}'.format(epoch, cfg.train.nepochs) \
                     + ' Iter {}/{}:'.format(idx + 1, niters_per_epoch) \
                     + ' lr=%.4e' % lr \
-                    + ' loss=%.4f total_loss=%.4f' % (loss, (sum_loss / (idx + 1))) \
-                    + ' loss_task1=%.4f total_loss_task1=%.4f' % (task1_loss, (sum_loss_task1 / (idx + 1))) \
-                    + ' loss_task2=%.4f total_loss_task2=%.4f' % (task2_loss, (sum_loss_task2 / (idx + 1)))
+                    + ' loss=%.4f total_loss=%.4f' % (loss, (sum_loss / (idx + 1)))
             pbar.set_description(print_str, refresh=False)
         
         if (distributed and (args.local_rank == 0)) or (not distributed):
             writer.add_scalar('train_loss', sum_loss / len(pbar), epoch)
-            writer.add_scalar('task1_loss', sum_loss_task1 / len(pbar), epoch)
-            writer.add_scalar('task2_loss', sum_loss_task2 / len(pbar), epoch)
     
         if (epoch >= cfg.checkpoint.start_epoch) and (epoch % cfg.checkpoint.step == 0) or (epoch == cfg.train.nepochs):
             model.eval()
-            task_metric = Evaluator(cfg, test_dataset, model, device).evaluate()
+            task_metric = Evaluator(cfg, test_dataset, model, model.task, device).evaluate()
             print_str = print_iou(task_metric, class_names=test_dataset.classes)
             logger.info(print_str)
             model.train()

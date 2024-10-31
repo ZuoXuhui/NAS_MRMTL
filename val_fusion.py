@@ -34,7 +34,7 @@ def parse_args():
         help='the dir to save logs and models')
     parser.add_argument(
         '--load-from',
-        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/work_dirs/MFNet_mit_b4_nddr_fuison/epoch-10.pth",
+        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/work_dirs/MFNet_mit_b4_nddr_fuison/epoch-188.pth",
         help='the checkpoint file to resume from')
     args = parser.parse_args()
     return args
@@ -80,6 +80,7 @@ def main():
 
             temp = out.cpu().numpy().transpose([1, 2, 0])
             temp = np.array(temp * 255, dtype=np.uint8)
+            temp = cv2.cvtColor(temp, cv2.COLOR_RGB2BGR)
             cv2.imwrite(os.path.join(save_dir, f"{filename}.png"), temp)
             
 

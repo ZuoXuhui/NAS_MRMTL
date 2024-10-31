@@ -20,9 +20,11 @@ from utils.visualization import print_iou
 from datasets.utils import normalize
 from datasets.utils import pad_image_to_shape
 
+from models.tasks import SegTask
+
 
 class Evaluator(object):
-    def __init__(self, cfg, dataset, model, device, save=False):
+    def __init__(self, cfg, dataset, model, task, device, save=False):
         self.num_classes = cfg.num_classes
         self.stride_rate = cfg.eval.eval_stride_rate
         self.multi_scales = cfg.eval.eval_scale_array
@@ -31,8 +33,7 @@ class Evaluator(object):
         
         self.dataset = dataset
         self.model = model
-        self.task1 = model.task1
-        self.task2 = model.task2
+        self.task = task
         
         self.ndata = len(dataset)
         self.save_img = save
@@ -158,7 +159,7 @@ class Evaluator(object):
             pred = self.sliding_eval(modal_x, modal_y)
 
             accumulator.append(
-                self.task1.accumulate_metric(pred, label)
+                self.task.accumulate_metric(pred, label)
                 )
             
             if self.save_img:
@@ -172,7 +173,7 @@ class Evaluator(object):
 
                 cv2.imwrite(os.path.join(self.save_path, fn), temp)
 
-        task_metric = self.task1.aggregate_metric(accumulator)
+        task_metric = self.task.aggregate_metric(accumulator)
 
         return task_metric
     
@@ -189,7 +190,7 @@ def parse_args():
     parser.add_argument(
         '--load-from',
         # default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/pretrained/MFNet.ckpt",
-        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/work_dirs/MFNet_mit_b4_nddr_fuison/epoch-52.pth",
+        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/work_dirs/MFNet_mit_b4_nddr_fuison/epoch-188.pth",
         help='the checkpoint file to resume from')
     args = parser.parse_args()
     return args
@@ -215,8 +216,14 @@ def main():
         from datasets import MFNetDataset as RGBXDataset
     test_dataset = RGBXDataset(cfg, stage="test")
 
-    from models import SingleTaskNet
-    model = SingleTaskNet(cfg, norm_layer=nn.BatchNorm2d)
+
+    if cfg.arch == "SingleTaskNet":
+        from models import SingleTaskNet
+        model = SingleTaskNet(cfg, norm_layer=nn.BatchNorm2d)
+    elif cfg.arch == "Task1":
+        from models import SegTaskNet
+        model = SegTaskNet(cfg, norm_layer=nn.BatchNorm2d)
+    
     logger.info(model)
     # load checkpoint
     if args.load_from is not None:
@@ -227,7 +234,9 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    eval = Evaluator(cfg, test_dataset, model, device, save=True)
+    task = SegTask(cfg.num_classes, cfg.datasets.ignore_index)
+
+    eval = Evaluator(cfg, test_dataset, model, task, device, save=True)
     task_metric = eval.evaluate()
     print_str = print_iou(task_metric, class_names=test_dataset.classes)
     logger.info(print_str)
