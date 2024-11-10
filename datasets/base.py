@@ -157,6 +157,97 @@ class CustomDataset(Dataset):
         return output_dict
         
 
+class EnhanceDataset(CustomDataset):
+    def __init__(
+            self,
+            data_root,
+            path1="visible",
+            path1_HQ="visible_HQ",
+            path1_suffix="png",
+            path2="infrared",
+            path2_HQ="infrared_HQ",
+            path2_suffix="png",
+            label="labels",
+            label_suffix="png",
+            stage='train',
+            split=None,
+            ignore_index=None,
+            preprocess=None,
+            classes=None,
+            palette=None
+            ):
+        self.stage = stage
+        
+        self.path1 = os.path.join(data_root, stage, path1)
+        self.path2 = os.path.join(data_root, stage, path2)
+        self.label = os.path.join(data_root, stage, label)
+        self.path1_HQ = os.path.join(data_root, stage, path1_HQ)
+        self.path2_HQ = os.path.join(data_root, stage, path2_HQ)
+        
+        self.img_infos = self.load_annotations(path1_suffix, path2_suffix, label_suffix, split)
+        
+        self.preprocess = preprocess
+
+        self.ignore_index = ignore_index
+        self.classes = classes
+        self.palette = palette
+
+    def load_annotations(self, path1_suffix, path2_suffix, label_suffix, split=None):
+        img_infos = []
+        if split is not None:
+            with open(split) as f:
+                for line in f:
+                    img_name = line.strip()
+                    img_info = dict(filename=img_name)
+                    img_info['path1_LQ'] = os.path.join(self.path1, img_name+path1_suffix)
+                    img_info['path2_LQ'] = os.path.join(self.path2, img_name+path2_suffix)
+                    img_info['path1_HQ'] = os.path.join(self.path1_HQ, img_name+path1_suffix)
+                    img_info['path2_HQ'] = os.path.join(self.path2_HQ, img_name+path2_suffix)
+                    img_info['label'] = os.path.join(self.label, img_name+label_suffix)
+                    img_infos.append(img_info)
+        else:
+            for img in mmcv.scandir(self.path1, path1_suffix, recursive=True):
+                img_name = img.replace(path1_suffix, "")
+                img_info = dict(filename=img_name)
+                img_info['path1_LQ'] = os.path.join(self.path1, img_name+path1_suffix)
+                img_info['path2_LQ'] = os.path.join(self.path2, img_name+path2_suffix)
+                img_info['path1_HQ'] = os.path.join(self.path1_HQ, img_name+path1_suffix)
+                img_info['path2_HQ'] = os.path.join(self.path2_HQ, img_name+path2_suffix)
+                img_info['label'] = os.path.join(self.label, img_name+label_suffix)
+                img_infos.append(img_info)
+
+        return img_infos
+    
+    def __getitem__(self, idx):
+        image_info = self.img_infos[idx]
+        img1 = self._open_image(image_info["path1_LQ"], dtype=np.uint8)
+        img2 = self._open_image(image_info["path2_LQ"], dtype=np.uint8)
+        img1_HQ = self._open_image(image_info["path1_HQ"], dtype=np.uint8)
+        img2_HQ = self._open_image(image_info["path2_HQ"], dtype=np.uint8)
+        gt = self._open_label(image_info["label"], dtype=np.uint8)
+
+        combine_img1 = np.concatenate((img1, img1_HQ), axis=-1)
+        combine_img2 = np.concatenate((img2, img2_HQ), axis=-1)
+
+
+        if self.preprocess is not None and self.stage == 'train':
+            combine_img1, combine_img2, gt, Mask = self.preprocess(combine_img1, combine_img2, gt)
+            img1 = combine_img1[0:3]
+            img1_HQ = combine_img1[3:]
+            img2 = combine_img2[0:3]
+            img2_HQ = combine_img2[3:]
+
+            img1 = torch.from_numpy(np.ascontiguousarray(img1)).float()
+            img2 = torch.from_numpy(np.ascontiguousarray(img2)).float()
+            img1_HQ = torch.from_numpy(np.ascontiguousarray(img1_HQ)).float()
+            img2_HQ = torch.from_numpy(np.ascontiguousarray(img2_HQ)).float()
+            gt = torch.from_numpy(np.ascontiguousarray(gt)).long()
+            
+            output_dict = dict(modal_x=img1, modal_y=img2, label_x=img1_HQ, label_y=img2_HQ, label=gt, Mask=Mask, fn=image_info["filename"])
+        
+        return output_dict
+
+
 class Train_pipline(object):
     def __init__(self, cfg):
         self.cfg = cfg
@@ -182,7 +273,7 @@ class Train_pipline(object):
         p_img1 = p_img1.transpose(2, 0, 1)
         p_img2 = p_img2.transpose(2, 0, 1)
 
-        Mask = np.zeros(p_img1.shape)
+        Mask = np.zeros((3, p_img1.shape[1], p_img1.shape[2]))
         Mask[:, Margin[0]:(crop_size[0]-Margin[1]), Margin[2]:(crop_size[1]-Margin[3])] = 1.
 
         return p_img1, p_img2, p_gt, Mask.astype(np.float32)

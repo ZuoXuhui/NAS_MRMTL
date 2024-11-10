@@ -46,7 +46,7 @@ def set_random_seed(seed, deterministic=False):
 def parse_args():
     parser = argparse.ArgumentParser(description='Train')
     parser.add_argument('--config',
-                        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/config/MFNet_mit_b4_nddr_task1_lighter.yaml",
+                        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/config/MFNet_mit_b4_nddr_task2_enhance_loss_weights.yaml",
                         help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(
@@ -135,15 +135,15 @@ def main():
     else:
         BatchNorm2d = nn.BatchNorm2d
     
-    from models import SegTaskNet
-    model = SegTaskNet(cfg, norm_layer=BatchNorm2d)
+    from models import FusionTaskNet
+    model = FusionTaskNet(cfg, norm_layer=BatchNorm2d)
     
     logger.info(f"{cfg.arch} model init done")
 
     # set dataloader
     from datasets import Train_pipline
-    if cfg.datasets.dataset_name == "MFNet":
-        from datasets import MFNetDataset as RGBXDataset
+    if cfg.datasets.dataset_name == "MFNetEnhance":
+        from datasets import MFNetEnhanceDataset as RGBXDataset
 
     train_process = Train_pipline(cfg)
     train_dataset = RGBXDataset(cfg, train_process, stage="train")
@@ -156,8 +156,7 @@ def main():
         pin_memory=True,
         )
     logger.info(f'Load train datasets numbers: {len(train_dataset)}')
-    test_dataset = RGBXDataset(cfg, stage="test")
-    logger.info(f'Load test datasets numbers: {len(test_dataset)}')
+
     # set optimizer
     base_lr = cfg.train.lr
 
@@ -191,8 +190,6 @@ def main():
         optimizer.load_state_dict(state_dict['optimizer'])
         logger.info(f"Resume checkpoint from {args.resume_from}")
 
-    best_iou = 0
-
     optimizer.zero_grad()
     model.train()
     logger.info('begin trainning:')
@@ -208,13 +205,17 @@ def main():
             minibatch = dataloader.next()
             modal_x = minibatch['modal_x']
             modal_y = minibatch['modal_y']
-            label = minibatch['label']
+            label_x = minibatch['label_x']
+            label_y = minibatch['label_y']
+            Mask = minibatch['Mask']
 
             modal_x = modal_x.cuda(non_blocking=True)
             modal_y = modal_y.cuda(non_blocking=True)
-            label = label.cuda(non_blocking=True)
+            label_x = label_x.cuda(non_blocking=True)
+            label_y = label_y.cuda(non_blocking=True)
+            Mask = Mask.cuda(non_blocking=True)
 
-            results = model.loss(modal_x, modal_y, label)
+            results = model.loss(modal_x, modal_y, label_x, label_y, Mask)
             loss = results.loss
 
             optimizer.zero_grad()
@@ -247,17 +248,9 @@ def main():
         torch.save(checkpoint, latest_epoch_checkpoint)
 
         if (epoch >= cfg.checkpoint.start_epoch) and (epoch % cfg.checkpoint.step == 0) or (epoch == cfg.train.nepochs):
-            model.eval()
-            task_metric = Evaluator(cfg, test_dataset, model, model.task, device).evaluate()
-            print_str = print_iou(task_metric, class_names=test_dataset.classes)
-            logger.info(print_str)
-            model.train()
-
-            if task_metric['Mean IoU'] >= best_iou:
-                best_iou = task_metric['Mean IoU']
-                current_epoch_checkpoint = os.path.join(cfg.work_dir, f'epoch-{epoch}.pth')
-                logger.info("Saving checkpoint to file {}".format(current_epoch_checkpoint))
-                torch.save(checkpoint, current_epoch_checkpoint)
+            current_epoch_checkpoint = os.path.join(cfg.work_dir, f'epoch-{epoch}.pth')
+            logger.info("Saving checkpoint to file {}".format(current_epoch_checkpoint))
+            torch.save(checkpoint, current_epoch_checkpoint)
 
         del state_dict, checkpoint
         torch.cuda.empty_cache()

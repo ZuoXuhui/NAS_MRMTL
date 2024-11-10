@@ -3,3 +3,5 @@
 omegacon==2.3.0
 timm
 tensorboardX
+einops
+scikit-Image

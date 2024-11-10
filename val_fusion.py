@@ -17,7 +17,7 @@ from datasets import FusionDataset
 def parse_args():
     parser = argparse.ArgumentParser(description='Test')
     parser.add_argument('--config',
-                        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/config/MFNet_mit_b4_nddr_fuison.yaml",
+                        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/config/MFNet_mit_b4_nddr_task2_enhance.yaml",
                         help='train config file path')
     parser.add_argument('--data-dir',
                         default="/data/zxh/dataset/MFNet_dataset/test/",
@@ -34,7 +34,7 @@ def parse_args():
         help='the dir to save logs and models')
     parser.add_argument(
         '--load-from',
-        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/work_dirs/MFNet_mit_b4_nddr_fuison/epoch-188.pth",
+        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/work_dirs/MFNet_mit_b4_nddr_task2_enhance/latest.pth",
         help='the checkpoint file to resume from')
     args = parser.parse_args()
     return args
@@ -55,8 +55,15 @@ def main():
     print(f"Load {len(test_dataset)} file from {args.data_dir}")
     
     cfg = OmegaConf.load(args.config)
-    from models import SingleTaskNet
-    model = SingleTaskNet(cfg, norm_layer=nn.BatchNorm2d)
+    if cfg.arch == "Task1":
+        from models import SegTaskNet
+        model = SegTaskNet(cfg, norm_layer=nn.BatchNorm2d)
+    elif cfg.arch == "Task2":
+        from models import FusionTaskNet
+        model = FusionTaskNet(cfg, norm_layer=nn.BatchNorm2d)
+    elif cfg.arch == "SingleTaskNet":
+        from models import SingleTaskNet
+        model = SingleTaskNet(cfg, norm_layer=nn.BatchNorm2d)
 
     # load checkpoint
     if args.load_from is not None:

@@ -240,9 +240,8 @@ class PCASC(nn.Module):
     def __init__(self, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0., sr_ratio=1):
         super(PCASC, self).__init__()                         
         self.SA_x1 = SelfAttention(dim, num_heads=num_heads,qkv_bias=False, qk_scale=None, attn_drop=attn_drop, proj_drop=proj_drop, sr_ratio=sr_ratio)
-        self.CA_x1toX2 = CrossAttention(dim,num_heads=num_heads,qkv_bias=False, qk_scale=None, attn_drop=attn_drop, proj_drop=proj_drop, sr_ratio=sr_ratio)
         self.SA_x2 = SelfAttention(dim,num_heads=num_heads,qkv_bias=False, qk_scale=None, attn_drop=attn_drop, proj_drop=proj_drop, sr_ratio=sr_ratio)
-        self.CA_x2toX1 = CrossAttention(dim,num_heads=num_heads,qkv_bias=False, qk_scale=None, attn_drop=attn_drop, proj_drop=proj_drop, sr_ratio=sr_ratio)
+        self.CA = CrossAttention(dim,num_heads=num_heads,qkv_bias=False, qk_scale=None, attn_drop=attn_drop, proj_drop=proj_drop, sr_ratio=sr_ratio)
         self.proj = nn.Linear(dim, dim)
         #self.proj_drop = nn.Dropout(proj_drop)
 
@@ -269,11 +268,10 @@ class PCASC(nn.Module):
         assert B1 == B2 and C1 == C2 and H1 == H2 and W1 == W2, "x1 and x2 should have the same dimensions"
         x1_flat = x1.flatten(2).transpose(1, 2)  ##B HXW C
         x2_flat = x2.flatten(2).transpose(1, 2)  ##B HXW C
-        x1_self_enhance =  self.SA_x1(x1_flat,H1, W1)
-        x2_cross_enhance = self.CA_x1toX2(x2_flat,x1_self_enhance,H1, W1)
-        x2_self_enhance = self.SA_x2(x2_cross_enhance,H1, W1)
-        x1_cross_enhance = self.CA_x2toX1(x1_self_enhance,x2_self_enhance,H1, W1)  ##B HXW C
-        Fuse = self.proj(x1_cross_enhance)   ##B HXW C
+        x1_self_enhance = self.SA_x1(x1_flat, H1, W1)
+        x2_self_enhance = self.SA_x2(x2_flat, H2, W2)
+        cross_enhance = self.CA(x1_self_enhance, x2_self_enhance, H1, W1)  ##B HXW C
+        Fuse = self.proj(cross_enhance)   ##B HXW C
 
         Fuse_out = Fuse.permute(0, 2, 1).reshape(B1, C1, H1, W1).contiguous()
           

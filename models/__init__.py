@@ -1,2 +1,2 @@
-from .builder import SegTaskNet
+from .builder import SegTaskNet, FusionTaskNet
 from .builder import SingleTaskNet, NDDRTaskNet

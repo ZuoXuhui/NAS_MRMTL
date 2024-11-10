@@ -1,3 +1,6 @@
+import random
+import numpy as np
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -82,10 +85,111 @@ def combine_sobel_xy(img):
     return grad_x, grad_y
 
 
+def get_random_patch_coordinates(mask: torch.Tensor, patch_height: int, patch_width: int):
+    B, _, H, W = mask.shape
+    coordinates = []
+
+    for b in range(B):
+        single_channel_mask = mask[b].max(dim=0).values
+        mask_indices = torch.nonzero(single_channel_mask, as_tuple=False)
+
+        top_left_h = torch.min(mask_indices[:, 0]).item()
+        top_left_w = torch.min(mask_indices[:, 1]).item()
+        bottom_right_h = torch.max(mask_indices[:, 0]).item()
+        bottom_right_w = torch.max(mask_indices[:, 1]).item()
+
+        max_h = min(bottom_right_h - patch_height + 1, H - patch_height)
+        max_w = min(bottom_right_w - patch_width + 1, W - patch_width)
+        min_h = max(top_left_h, 0)
+        min_w = max(top_left_w, 0)
+
+        available_positions = []
+        for h in range(min_h, max_h + 1, patch_height):
+            for w in range(min_w, max_w + 1, patch_width):
+                if h + patch_height <= H and w + patch_width <= W:
+                    patch_mask_area = single_channel_mask[h:h + patch_height, w:w + patch_width]
+                    if torch.all(patch_mask_area > 0):
+                        available_positions.append((h, w))
+        
+        random.shuffle(available_positions)
+        coordinates.append(available_positions)
+    
+    return coordinates
+
+
+def extract_patches_from_image(image: torch.Tensor, all_coordinates: torch.Tensor, patch_height: int, patch_width: int):
+    B, C, H, W = image.shape
+    
+    N = min(len(coordinates) for coordinates in all_coordinates)
+    P = patch_height * patch_width
+    
+    all_patches = []
+    for b in range(B):
+        b_image = image[b]
+        coordinates = all_coordinates[b]
+
+        patches = torch.zeros((N, C, P), dtype=image.dtype, device=image.device)
+
+        for i in range(N):
+            (h, w) = coordinates[i]
+            patch = b_image[:, h:h + patch_height, w:w + patch_width]
+            patches[i] = patch.reshape(C, -1)
+
+        all_patches.append(patches)
+
+    batch_patches = torch.stack(all_patches, dim=0).to(image.device, image.dtype)
+
+    return batch_patches
+
+
+class patch_loss(nn.Module):
+    def __init__(self, patch_size=16):
+        super().__init__()
+        # patch_size = 16 for image size 256*256
+        self.patch_size = patch_size
+        self.l1_loss = nn.L1Loss()
+    
+    def forward(self, fuse, img1, img2, Mask):
+        # 1 - ir, 2 - vi
+        B, C, H, W = fuse.shape
+
+        # patch_matrix  # (b, c, N, patch_size * patch_size)
+        coordinates = get_random_patch_coordinates(Mask, self.patch_size, self.patch_size)
+        patch_fuse = extract_patches_from_image(fuse, coordinates, self.patch_size, self.patch_size)
+        patch_img1 = extract_patches_from_image(img1, coordinates, self.patch_size, self.patch_size)
+        patch_img2 = extract_patches_from_image(img2, coordinates, self.patch_size, self.patch_size)
+
+        b0, c0, n0, p0 = patch_fuse.shape
+        b1, c1, n1, p1 = patch_img1.shape
+        b2, c2, n2, p2 = patch_img2.shape
+        assert n0 == n1 == n2 and p0 == p1 == p2, \
+                f"The number of patches ({n0}, {n1} and {n2}) or the patch sice ({p0}, {p1} and {p2}) doesn't match ."
+
+        mu1 = torch.mean(patch_img1, dim=3)
+        mu2 = torch.mean(patch_img2, dim=3)
+
+        mu1_re = mu1.view(b1, c1, n1, 1).repeat(1, 1, 1, p1)
+        mu2_re = mu2.view(b2, c2, n2, 1).repeat(1, 1, 1, p2)
+
+        # SD, b1 * c1 * n1 * 1
+        sd1 = torch.sqrt(torch.sum(((patch_img1 - mu1_re) ** 2), dim=3) / p1)
+        sd2 = torch.sqrt(torch.sum(((patch_img2 - mu2_re) ** 2), dim=3) / p2)
+        # sd_mask = getBinaryTensor(sd1 - sd2, 0)
+
+        w1 = sd1 / (sd1 + sd2 + 1e-6)
+        w2 = sd2 / (sd1 + sd2 + 1e-6)
+        
+        w1 = w1.view(b1, c1, n1, 1).repeat(1, 1, 1, p1)
+        w2 = w2.view(b2, c2, n2, 1).repeat(1, 1, 1, p2)
+
+        loss = self.l1_loss(patch_fuse, w1 * patch_img1 + w2 * patch_img2)
+        return loss
+
 class fusion_loss:
     def __init__(self, weight):
         self.weight = weight
         self.l1_loss = nn.L1Loss()
+        self.patch_loss = patch_loss(32)
     
     def __call__(self, fuse, img1, img2, Mask):
         ## img1 is RGB, img2 is Gray
@@ -101,17 +205,15 @@ class fusion_loss:
         Cr_img1 = YCbCr_img1[:,1:2,:,:]
         Cb_img1 = YCbCr_img1[:,2:,:,:]
 
-        fuse_grad_x, fuse_grad_y = combine_sobel_xy(fuse)
-        img1_grad_x, img1_grad_y = combine_sobel_xy(img1)
-        img2_grad_x, img2_grad_y = combine_sobel_xy(img2)
+        fuse_grad_x, fuse_grad_y = Sobelxy(Y_fuse)
+        img1_grad_x, img1_grad_y = Sobelxy(Y_img1)
+        img2_grad_x, img2_grad_y = Sobelxy(img2[:,0:1,:,:])
 
         joint_grad_x = torch.maximum(img1_grad_x, img2_grad_x)
         joint_grad_y = torch.maximum(img1_grad_y, img2_grad_y)
-        # joint_int  = torch.maximum(img1, img2)
-        joint_int  = torch.maximum(Y_img1, img2[:,0:1,:,:])
 
-        con_loss = self.l1_loss(Y_fuse, joint_int)
-        gradient_loss = 0.5*self.l1_loss(fuse_grad_x, joint_grad_x) + 0.5*self.l1_loss(fuse_grad_y, joint_grad_y)
+        con_loss = self.patch_loss(Y_fuse, Y_img1, img2[:,0:1,:,:], Mask)
+        gradient_loss = self.l1_loss(fuse_grad_x, joint_grad_x) + self.l1_loss(fuse_grad_y, joint_grad_y)
         color_loss = self.l1_loss(Cr_fuse, Cr_img1) + self.l1_loss(Cb_fuse, Cb_img1)
 
         loss = self.weight[0] * con_loss  + self.weight[1] * gradient_loss  + self.weight[2] * color_loss
