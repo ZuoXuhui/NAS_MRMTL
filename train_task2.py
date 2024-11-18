@@ -46,7 +46,7 @@ def set_random_seed(seed, deterministic=False):
 def parse_args():
     parser = argparse.ArgumentParser(description='Train')
     parser.add_argument('--config',
-                        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/config/MFNet_mit_b4_nddr_task2_enhance_loss_weights.yaml",
+                        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/config/MFNet_mit_b4_nddr_task2_noenhance_loss_weights_patch64.yaml",
                         help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(
@@ -54,7 +54,7 @@ def parse_args():
         help='the pretrained ckpt file to load from')
     parser.add_argument(
         '--resume-from',
-        # default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/work_dirs/MFNet_mit_b4_nddr_fuison/epoch-140.pth",
+        # default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/work_dirs/MFNet_mit_b4_nddr_task2_noenhance_loss_weights_patch64/latest.pth",
         help='the checkpoint file to resume from')
     group_gpus = parser.add_mutually_exclusive_group()
     group_gpus.add_argument(

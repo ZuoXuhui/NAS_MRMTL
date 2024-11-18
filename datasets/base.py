@@ -9,6 +9,7 @@ import mmcv
 
 from .utils import normalize
 from .utils import random_mirror, random_scale, generate_random_crop_pos, random_crop_pad_to_shape
+from .utils import ColorAugSSDTransform, MaskGenerator
 
 class FusionDataset(Dataset):
     def __init__(
@@ -229,7 +230,6 @@ class EnhanceDataset(CustomDataset):
         combine_img1 = np.concatenate((img1, img1_HQ), axis=-1)
         combine_img2 = np.concatenate((img2, img2_HQ), axis=-1)
 
-
         if self.preprocess is not None and self.stage == 'train':
             combine_img1, combine_img2, gt, Mask = self.preprocess(combine_img1, combine_img2, gt)
             img1 = combine_img1[0:3]
@@ -254,24 +254,63 @@ class Train_pipline(object):
         self.train_scale_array = cfg.train.train_scale_array
         self.image_height = cfg.datasets.image_height
         self.image_width = cfg.datasets.image_width
+
+        self.color_augment = ColorAugSSDTransform(img_format="RGB")
+        self.mask_generator = MaskGenerator(input_size=[self.image_height, self.image_width],
+                                            mask_patch_size=cfg.train.Mask.size,
+                                            strategy=cfg.train.Mask.strategy
+                                            )
     
     def __call__(self, img1, img2, gt):
-        img1, img2, gt = random_mirror(img1, img2, gt)
-        if self.train_scale_array is not None:
-            img1, img2, gt, scale = random_scale(img1, img2, gt, self.train_scale_array)
+        if img1.shape[-1] > 3:
+            img1[...,:3] = self.color_augment.apply_image(img1[...,:3])
+            
+            img1, img2, gt = random_mirror(img1, img2, gt)
+            if self.train_scale_array is not None:
+                img1, img2, gt, scale = random_scale(img1, img2, gt, self.train_scale_array)
+
+            img1 = normalize(img1)
+            img2 = normalize(img2)
+
+            crop_size = (self.image_height, self.image_width)
+            crop_pos = generate_random_crop_pos(img1.shape[:2], crop_size)
+
+            p_img1, Margin = random_crop_pad_to_shape(img1, crop_pos, crop_size, 0)
+            p_img2, _ = random_crop_pad_to_shape(img2, crop_pos, crop_size, 0)
+            p_gt, _ = random_crop_pad_to_shape(gt, crop_pos, crop_size, 255)
+
+            p_img1 = p_img1.transpose(2, 0, 1)
+            p_img2 = p_img2.transpose(2, 0, 1)
+
+            p_mask1, p_mask2 = self.mask_generator()
+            
+            p_img1[:3] = p_img1[:3] * p_mask1
+            p_img2[:3] = p_img2[:3] * p_mask2
         
-        img1 = normalize(img1)
-        img2 = normalize(img2)
+        else:
+            img1 = self.color_augment.apply_image(img1)
 
-        crop_size = (self.image_height, self.image_width)
-        crop_pos = generate_random_crop_pos(img1.shape[:2], crop_size)
+            img1, img2, gt = random_mirror(img1, img2, gt)
+            if self.train_scale_array is not None:
+                img1, img2, gt, scale = random_scale(img1, img2, gt, self.train_scale_array)
 
-        p_img1, Margin = random_crop_pad_to_shape(img1, crop_pos, crop_size, 0)
-        p_img2, _ = random_crop_pad_to_shape(img2, crop_pos, crop_size, 0)
-        p_gt, _ = random_crop_pad_to_shape(gt, crop_pos, crop_size, 255)
+            img1 = normalize(img1)
+            img2 = normalize(img2)
 
-        p_img1 = p_img1.transpose(2, 0, 1)
-        p_img2 = p_img2.transpose(2, 0, 1)
+            crop_size = (self.image_height, self.image_width)
+            crop_pos = generate_random_crop_pos(img1.shape[:2], crop_size)
+
+            p_img1, Margin = random_crop_pad_to_shape(img1, crop_pos, crop_size, 0)
+            p_img2, _ = random_crop_pad_to_shape(img2, crop_pos, crop_size, 0)
+            p_gt, _ = random_crop_pad_to_shape(gt, crop_pos, crop_size, 255)
+
+            p_img1 = p_img1.transpose(2, 0, 1)
+            p_img2 = p_img2.transpose(2, 0, 1)
+
+            p_mask1, p_mask2 = self.mask_generator()
+
+            p_img1 = p_img1 * p_mask1
+            p_img2 = p_img2 * p_mask2
 
         Mask = np.zeros((3, p_img1.shape[1], p_img1.shape[2]))
         Mask[:, Margin[0]:(crop_size[0]-Margin[1]), Margin[2]:(crop_size[1]-Margin[3])] = 1.

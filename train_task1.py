@@ -46,7 +46,7 @@ def set_random_seed(seed, deterministic=False):
 def parse_args():
     parser = argparse.ArgumentParser(description='Train')
     parser.add_argument('--config',
-                        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/config/MFNet_mit_b4_nddr_task1_lighter.yaml",
+                        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/config/MFNet_mit_b4_nddr_task1_lighter_enhance_weights_lovasz.yaml",
                         help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(

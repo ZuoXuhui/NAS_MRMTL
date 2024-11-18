@@ -7,9 +7,9 @@ from utils.visualization import process_seg_label, process_fusion_imgs
 
 
 class SegTask:
-    def __init__(self, num_classes, ignore_index):
+    def __init__(self, num_classes, weight, ignore_index):
         self.num_classes = num_classes
-        self.seg_loss = seg_loss(ignore_index)
+        self.seg_loss = seg_loss(weight, num_classes, ignore_index)
 
     def loss(self, prediction, gt):
         return self.seg_loss(prediction, gt)
