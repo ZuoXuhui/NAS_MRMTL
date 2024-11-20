@@ -41,6 +41,25 @@ def get_nddr(cfg, in_channels, out_channels):
         raise NotImplementedError
 
 
+class NDDR_Brige(nn.Module):
+    def __init__(self, cfg, out_channels):
+        super(NDDR_Brige, self).__init__()
+        norm = get_nddr_bn(cfg)
+
+        self.conv = nn.Conv2d(out_channels, out_channels, kernel_size=1, bias=False)
+
+        nn.init.kaiming_normal_(self.conv.weight, mode='fan_out', nonlinearity='relu')
+
+        self.activation = nn.ReLU()
+        self.bn = norm(out_channels)
+
+    def forward(self, feature):
+        feature = self.conv(feature)
+        feature = self.bn(feature)
+        feature = self.activation(feature)
+        return feature
+
+
 class CrossStitch(nn.Module):
     def __init__(self, cfg, out_channels):
         super(CrossStitch, self).__init__()

@@ -34,7 +34,7 @@ def parse_args():
         help='the dir to save logs and models')
     parser.add_argument(
         '--load-from',
-        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/work_dirs/MFNet_mit_b4_nddr_task2_noenhance_loss_weights_patch64/epoch-600.pth",
+        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/work_dirs/MFNet_mit_b4_nddr_task2_noenhance_loss_weights_patch64/epoch-840.pth",
         help='the checkpoint file to resume from')
     args = parser.parse_args()
     return args

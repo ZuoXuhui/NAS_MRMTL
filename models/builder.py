@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from .tasks import SegTask, FusionTask
 
 from .encoders.dual_segformer import RGBXTransformerBlock
-from .common_layers import get_nddr
+from .common_layers import get_nddr, NDDR_Brige
 from .decoders.MLPDecoder import DecoderHead
 from .decoders.CNNDecoder import CNNHead
 
@@ -173,7 +173,17 @@ class NDDRTaskNet(nn.Module):
         self.num_classes =  cfg.num_classes
         self.in_chans = cfg.in_chans
         # encoder
-        embed_dims = cfg.encoder.embed_dim
+        self.num_stages = cfg.num_stages
+        embed_dims = cfg.encoder.embed_dims
+
+        # distillation brige
+        # briges = []
+        # for stage_id in range(self.num_stages):
+        #     out_channels = embed_dims[stage_id]
+        #     brige = NDDR_Brige(cfg, out_channels)
+        #     briges.append(brige)
+        # self.task1.brige = nn.ModuleList(briges)
+        # self.task2.brige = nn.ModuleList(briges)
 
         # nddr
         nddrs = []
@@ -182,17 +192,11 @@ class NDDRTaskNet(nn.Module):
             nddr = get_nddr(cfg, out_channels, out_channels)
             nddrs.append(nddr)
         self.nddrs = nn.ModuleList(nddrs)
-        self.task1.brige = nn.ModuleList(nddrs)
-        self.task2.brige = nn.ModuleList(nddrs)
         
-        self.init_weights()
         self._step = 0
 
     def step(self):
         self._step += 1
-
-    def init_weights(self):
-        pass
 
     def load_weights(self, task_file1, task_file2):
         if task_file1 is None or task_file2 is None:
@@ -202,16 +206,12 @@ class NDDRTaskNet(nn.Module):
         else:
             state_dict = task_file1
         self.task1.load_state_dict(state_dict, strict=False)
-        for param in self.task1.parameters():
-            param.requires_grad = False
 
         if isinstance(task_file2, str):
             state_dict = torch.load(task_file2, map_location=torch.device('cpu'))
         else:
             state_dict = task_file2
         self.task2.load_state_dict(state_dict, strict=False)
-        for param in self.task2.parameters():
-            param.requires_grad = False
         
         del state_dict
 
@@ -228,24 +228,50 @@ class NDDRTaskNet(nn.Module):
             fuse_xy_sem = self.task1.encoders[stage_id].forward_features(feat_x_sem, feat_y_sem)
 
             feat_x_vis, feat_y_vis = self.task2.encoders[stage_id].forward(feat_x_vis, feat_y_vis)
-            fuse_xy_vis = self.task2.eencoders[stage_id].forward_features(feat_x_vis, feat_y_vis)
+            fuse_xy_vis = self.task2.encoders[stage_id].forward_features(feat_x_vis, feat_y_vis)
 
             # feature search
-            search_feat = self.nddrs[stage_id](fuse_xy_sem, fuse_xy_vis)
-            fuse_xy_sem = self.task1.brige[stage_id](fuse_xy_sem)
-            fuse_xy_vis = self.task2.brige[stage_id](fuse_xy_vis)
+            search_feat_sem, search_feat_vis = self.nddrs[stage_id](fuse_xy_sem, fuse_xy_vis)
+            # fuse_xy_sem = self.task1.brige[stage_id](fuse_xy_sem)
+            # fuse_xy_vis = self.task2.brige[stage_id](fuse_xy_vis)
 
-            out_semantic.append(fuse_xy_sem)
-            out_visual.append(fuse_xy_vis)
+            out_semantic.append(search_feat_sem)
+            out_visual.append(search_feat_vis)
 
         result.out1 = self.task1.decoder.forward(out_semantic)
         result.out2 = self.task2.decoder.forward(out_visual)
 
         result.loss1 = self.task1.task.loss(result.out1, label)
         result.loss2 = self.task2.task.loss(result.out2, label_x, label_y, Mask)
-        result.loss3 = F.l1_loss(search_feat, fuse_xy_sem) + F.l1_loss(search_feat, fuse_xy_vis)
-        result.loss = result.loss1 + result.loss2 + self.cfg.weights.FACTOR * result.loss2 + result.loss3
+        # result.loss3 = F.l1_loss(search_feat_sem, fuse_xy_sem) + F.l1_loss(search_feat_vis, fuse_xy_vis)
+        result.loss = result.loss1 + result.loss2 + self.cfg.weights.FACTOR * result.loss2
 
         return result
+    
+
+    def forward(self, modal_x, modal_y):
+        out_semantic = []
+        out_visual = [torch.cat([modal_x, modal_y], dim=1)]
+
+        feat_x_sem, feat_y_sem = modal_x, modal_y
+        feat_x_vis, feat_y_vis = modal_x, modal_y
+        for stage_id in range(self.num_stages):
+            feat_x_sem, feat_y_sem = self.task1.encoders[stage_id].forward(feat_x_sem, feat_y_sem)
+            fuse_xy_sem = self.task1.encoders[stage_id].forward_features(feat_x_sem, feat_y_sem)
+
+            feat_x_vis, feat_y_vis = self.task2.encoders[stage_id].forward(feat_x_vis, feat_y_vis)
+            fuse_xy_vis = self.task2.encoders[stage_id].forward_features(feat_x_vis, feat_y_vis)
+
+            search_feat_sem, search_feat_vis = self.nddrs[stage_id](fuse_xy_sem, fuse_xy_vis)
+            # fuse_xy_sem = self.task1.brige[stage_id](fuse_xy_sem)
+            # fuse_xy_vis = self.task2.brige[stage_id](fuse_xy_vis)
+
+            out_semantic.append(search_feat_sem)
+            out_visual.append(search_feat_vis)
+
+        out1 = self.task1.decoder.forward(out_semantic)
+        out2 = self.task2.decoder.forward(out_visual)
+
+        return AttrDict({'out1': out1, 'out2': out2})
 
 

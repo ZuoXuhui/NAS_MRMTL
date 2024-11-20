@@ -181,7 +181,7 @@ class Evaluator(object):
 def parse_args():
     parser = argparse.ArgumentParser(description='Test')
     parser.add_argument('--config',
-                        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/config/MFNet_mit_b4_nddr.yaml",
+                        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/config/MFNet_mit_b4_nddr_search.yaml",
                         help='train config file path')
     parser.add_argument(
         '--save-dir',
@@ -190,7 +190,7 @@ def parse_args():
     parser.add_argument(
         '--load-from',
         # default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/pretrained/MFNet.ckpt",
-        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/work_dirs/MFNet_mit_b4_nddr_fuison/epoch-188.pth",
+        # default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/work_dirs/MFNet_mit_b4_nddr_search/latest.pth",
         help='the checkpoint file to resume from')
     args = parser.parse_args()
     return args
@@ -212,14 +212,14 @@ def main():
     log_file = os.path.join(cfg.save_dir, f'{timestamp}.log')
     logger = get_root_logger(log_file=log_file, log_level=cfg.log_level)
 
-    if cfg.datasets.dataset_name == "MFNet":
+    if "MFNet" in cfg.datasets.dataset_name:
         from datasets import MFNetDataset as RGBXDataset
     test_dataset = RGBXDataset(cfg, stage="test")
 
 
-    if cfg.arch == "SingleTaskNet":
-        from models import SingleTaskNet
-        model = SingleTaskNet(cfg, norm_layer=nn.BatchNorm2d)
+    if cfg.arch == "NAS_Task":
+        from models import NDDRTaskNet
+        model = NDDRTaskNet(cfg, norm_layer=nn.BatchNorm2d)
     elif cfg.arch == "Task1":
         from models import SegTaskNet
         model = SegTaskNet(cfg, norm_layer=nn.BatchNorm2d)
@@ -234,7 +234,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    task = SegTask(cfg.num_classes, cfg.datasets.ignore_index)
+    task = SegTask(cfg.num_classes, cfg.weights.task1, cfg.datasets.ignore_index)
 
     eval = Evaluator(cfg, test_dataset, model, task, device, save=True)
     task_metric = eval.evaluate()
