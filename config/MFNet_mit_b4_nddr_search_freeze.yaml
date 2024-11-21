@@ -84,5 +84,5 @@ eval:
   eval_crop_size: [480, 640]
 
 checkpoint:
-  start_epoch: 10
+  start_epoch: 2
   step: 2

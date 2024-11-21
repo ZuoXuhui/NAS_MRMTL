@@ -64,7 +64,7 @@ def set_random_seed(seed, deterministic=False):
 def parse_args():
     parser = argparse.ArgumentParser(description='Train')
     parser.add_argument('--config',
-                        default="./config/MFNet_mit_b4_nddr_search.yaml",
+                        default="./config/MFNet_mit_b4_nddr_search_freeze .yaml",
                         help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(
@@ -224,7 +224,7 @@ def main():
         if args.local_rank == 0:
             logger.info(f"Resume checkpoint from {args.resume_from}")
 
-    best_iou = 59.8
+    best_iou = 0.605
 
     optimizer.zero_grad()
     model.train()
@@ -298,20 +298,21 @@ def main():
             }
             torch.save(checkpoint, latest_epoch_checkpoint)
 
-        if args.local_rank == 0 and (epoch >= cfg.checkpoint.start_epoch) and (epoch % cfg.checkpoint.step == 0) or (epoch == cfg.train.nepochs):
-            model.eval()
-            task_metric = Evaluator(cfg, test_dataset, model, model.task1.task, device).evaluate()
-            print_str = print_iou(task_metric, class_names=test_dataset.classes)
-            logger.info(print_str)
-            model.train()
+            if (epoch >= cfg.checkpoint.start_epoch) and (epoch % cfg.checkpoint.step == 0) or (epoch == cfg.train.nepochs):
+                model.eval()
+                task_metric = Evaluator(cfg, test_dataset, model, model.task1.task, device).evaluate()
+                print_str = print_iou(task_metric, class_names=test_dataset.classes)
+                logger.info(print_str)
+                model.train()
 
-            if task_metric['Mean IoU'] >= best_iou:
-                best_iou = task_metric['Mean IoU']
-                current_epoch_checkpoint = os.path.join(cfg.work_dir, f'epoch-{epoch}.pth')
-                logger.info("Saving checkpoint to file {}".format(current_epoch_checkpoint))
-                torch.save(checkpoint, current_epoch_checkpoint)
+                if task_metric['Mean IoU'] >= best_iou:
+                    best_iou = task_metric['Mean IoU']
+                    current_epoch_checkpoint = os.path.join(cfg.work_dir, f'epoch-{epoch}.pth')
+                    logger.info("Saving checkpoint to file {}".format(current_epoch_checkpoint))
+                    torch.save(checkpoint, current_epoch_checkpoint)
 
-        del state_dict, checkpoint
+            del state_dict, checkpoint
+        
         torch.cuda.empty_cache()
 
 
