@@ -20,11 +20,13 @@ from utils.loggers import get_root_logger
 from utils.init_func import group_weight
 from utils.lr_policy import WarmUpPolyLR
 from utils.visualization import print_iou
+from utils.pyt_utils import all_reduce_tensor
 
 from tensorboardX import SummaryWriter
 
 from val import Evaluator
 
+# CUDA_VISIBLE_DEVICES=1,2 python3 -m torch.distributed.launch --nproc_per_node 2 train_search.py
 
 def synchronize():
     """
@@ -62,7 +64,7 @@ def set_random_seed(seed, deterministic=False):
 def parse_args():
     parser = argparse.ArgumentParser(description='Train')
     parser.add_argument('--config',
-                        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/config/MFNet_mit_b4_nddr_search.yaml",
+                        default="./config/MFNet_mit_b4_nddr_search.yaml",
                         help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(
@@ -108,19 +110,19 @@ def main():
         
     if args.resume_from is not None:
         cfg.resume_from = args.resume_from
-    
-    num_gpus = int(os.environ["WORLD_SIZE"]) if "WORLD_SIZE" in os.environ else 1
-    distributed = num_gpus > 1
 
+    num_gpus = int(os.environ['WORLD_SIZE']) if "WORLD_SIZE" in os.environ else 1
+    distributed = num_gpus > 1
+    
+    print(args.local_rank)
     if distributed:
-        os.environ['MASTER_ADDR'] = '127.0.0.1'
-        os.environ['MASTER_PORT'] = str(args.port)
         torch.cuda.set_device(args.local_rank)
+        # os.environ['MASTER_PORT'] = str(args.port)
         torch.distributed.init_process_group(
-            backend="nccl", init_method="env://"
+            backend="nccl", init_method="env://", rank=args.local_rank
         )
         synchronize()
-
+    
     if args.local_rank == 0:
         # create work_dir
         mmcv.mkdir_or_exist(os.path.abspath(cfg.work_dir))
@@ -173,25 +175,25 @@ def main():
         train_sampler = None
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
-        batch_size=cfg.train.batch_size,
+        batch_size=cfg.train.batch_size if not distributed else cfg.train.batch_size // num_gpus,
         num_workers=cfg.train.num_workers,
         drop_last=True,
-        shuffle=True,
+        shuffle=False if distributed else True,
         pin_memory=True,
         sampler=train_sampler
         )
     if args.local_rank == 0:
         logger.info(f'Load train datasets numbers: {len(train_dataset)}')
     
-    if "MFNet" in cfg.datasets.dataset_name:
-        from datasets import MFNetDataset as TestDataset
     # set test dataset
-    test_dataset = TestDataset(cfg, stage="test")
     if args.local_rank == 0:
+        if "MFNet" in cfg.datasets.dataset_name:
+            from datasets import MFNetDataset as TestDataset
+        test_dataset = TestDataset(cfg, stage="test")
         logger.info(f'Load test datasets numbers: {len(test_dataset)}')
     # set optimizer
     base_lr = cfg.train.lr
-
+    
     params_list = []
     params_list = group_weight(params_list, model, BatchNorm2d, base_lr)
 
@@ -210,10 +212,8 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     if distributed:
-        logger.info('.............distributed training.............')
         model=torch.nn.DataParallel(model)
         
-    
     # resume training
     state_epoch = 0
     if args.resume_from is not None:
@@ -221,13 +221,15 @@ def main():
         state_epoch = state_dict['epoch'] + 1
         model.load_state_dict(state_dict['model'], strict=True)
         optimizer.load_state_dict(state_dict['optimizer'])
-        logger.info(f"Resume checkpoint from {args.resume_from}")
+        if args.local_rank == 0:
+            logger.info(f"Resume checkpoint from {args.resume_from}")
 
     best_iou = 59.8
 
     optimizer.zero_grad()
     model.train()
-    logger.info('begin trainning:')
+    if args.local_rank == 0:
+        logger.info('begin trainning:')
     for epoch in range(state_epoch, cfg.train.nepochs+1):
         if distributed:
             train_sampler.set_epoch(epoch)  # steps is used to seed RNG
@@ -255,8 +257,11 @@ def main():
             label_y = label_y.cuda(non_blocking=True)
             Mask = Mask.cuda(non_blocking=True)
 
-            results = model.loss(modal_x, modal_y, label, label_x, label_y, Mask)
-            del modal_x, modal_y, label, label_x, label_y, Mask
+            if distributed:
+                results = model.module.loss(modal_x, modal_y, label, label_x, label_y, Mask)
+            else:
+                results = model.loss(modal_x, modal_y, label, label_x, label_y, Mask)
+            
             loss = results.loss
 
             optimizer.zero_grad()
@@ -269,26 +274,29 @@ def main():
             for i in range(len(optimizer.param_groups)):
                 optimizer.param_groups[i]['lr'] = lr
 
-            sum_loss += loss
+            if distributed:
+                loss = all_reduce_tensor(loss, world_size=num_gpus)
+            
+            sum_loss += loss.item()
             print_str = 'Epoch {}/{}'.format(epoch, cfg.train.nepochs) \
                     + ' Iter {}/{}:'.format(idx + 1, niters_per_epoch) \
                     + ' lr=%.4e' % lr \
-                    + ' loss=%.4f total_loss=%.4f' % (loss, (sum_loss / (idx + 1)))
+                    + ' loss=%.4f total_loss=%.4f' % (loss.item(), (sum_loss / (idx + 1)))
             pbar.set_description(print_str, refresh=False)
 
             torch.cuda.empty_cache()
         
         if (distributed and (args.local_rank == 0)) or (not distributed):
             writer.add_scalar('train_loss', sum_loss / len(pbar), epoch)
-    
-        latest_epoch_checkpoint = os.path.join(cfg.work_dir, f'latest.pth')
-        state_dict = model.module.state_dict() if distributed else model.state_dict()
-        checkpoint = {
-            'model': state_dict,
-            'optimizer': optimizer.state_dict(),
-            'epoch': epoch
-        }
-        torch.save(checkpoint, latest_epoch_checkpoint)
+
+            latest_epoch_checkpoint = os.path.join(cfg.work_dir, f'latest.pth')
+            state_dict = model.module.state_dict() if distributed else model.state_dict()
+            checkpoint = {
+                'model': state_dict,
+                'optimizer': optimizer.state_dict(),
+                'epoch': epoch
+            }
+            torch.save(checkpoint, latest_epoch_checkpoint)
 
         if args.local_rank == 0 and (epoch >= cfg.checkpoint.start_epoch) and (epoch % cfg.checkpoint.step == 0) or (epoch == cfg.train.nepochs):
             model.eval()

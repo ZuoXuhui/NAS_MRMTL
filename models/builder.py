@@ -198,6 +198,10 @@ class NDDRTaskNet(nn.Module):
     def step(self):
         self._step += 1
 
+    def train_parameters(self):
+        params = filter(lambda p: p.requires_grad, self.parameters())
+        return params
+
     def load_weights(self, task_file1, task_file2):
         if task_file1 is None or task_file2 is None:
             return
@@ -207,12 +211,20 @@ class NDDRTaskNet(nn.Module):
             state_dict = task_file1
         self.task1.load_state_dict(state_dict, strict=False)
 
+        # freeze encoders
+        # for param in self.task1.encoders.parameters():
+        #     param.requires_grad = False
+
         if isinstance(task_file2, str):
             state_dict = torch.load(task_file2, map_location=torch.device('cpu'))
         else:
             state_dict = task_file2
         self.task2.load_state_dict(state_dict, strict=False)
         
+        # freeze encoders
+        # for param in self.task2.encoders.parameters():
+        #     param.requires_grad = False
+
         del state_dict
 
     def loss(self, modal_x, modal_y, label, label_x, label_y, Mask):

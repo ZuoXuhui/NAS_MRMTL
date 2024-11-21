@@ -53,6 +53,7 @@ def group_weight(weight_group, module, norm_layer, lr):
             group_decay.append(m)
    
     assert len(list(module.parameters())) >= len(group_decay) + len(group_no_decay)
-    weight_group.append(dict(params=group_decay, lr=lr))
-    weight_group.append(dict(params=group_no_decay, weight_decay=.0, lr=lr))
+
+    weight_group.append(dict(params=filter(lambda p: p.requires_grad, group_decay), lr=lr))
+    weight_group.append(dict(params=filter(lambda p: p.requires_grad, group_no_decay), weight_decay=.0, lr=lr))
     return weight_group

@@ -3,14 +3,14 @@ num_classes: 9
 arch: "NAS_Task"
 backbone: 'mit_b4'
 log_level: 'INFO'
-load_task1: "/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/pretrained/task1.pth"
-load_task2: "/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/pretrained/task2.pth"
+load_task1: "./pretrained/task1.pth"
+load_task2: "./pretrained/task2.pth"
 
 datasets:
   dataset_name: "MFNetEnhance"
   image_height: 480
   image_width: 640
-  root: "/data/zxh/NAS_MRMTL_project/Dataset/MFNet/"
+  root: "/data1/ZXH/NAS_MRMTL_project/Dataset/MFNet/"
   path1: "visible"
   path1_HQ: "visible_HQ"
   path1_suffix: ".png"
@@ -63,7 +63,7 @@ train:
   momentum: 0.9
   weight_decay: 0.01
   
-  batch_size: 2
+  batch_size: 4
   num_workers: 4
   
   nepochs: 5000
