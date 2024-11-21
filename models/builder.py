@@ -212,8 +212,8 @@ class NDDRTaskNet(nn.Module):
         self.task1.load_state_dict(state_dict, strict=False)
 
         # freeze encoders
-        # for param in self.task1.encoders.parameters():
-        #     param.requires_grad = False
+        for param in self.task1.encoders.parameters():
+            param.requires_grad = False
 
         if isinstance(task_file2, str):
             state_dict = torch.load(task_file2, map_location=torch.device('cpu'))
@@ -222,8 +222,8 @@ class NDDRTaskNet(nn.Module):
         self.task2.load_state_dict(state_dict, strict=False)
         
         # freeze encoders
-        # for param in self.task2.encoders.parameters():
-        #     param.requires_grad = False
+        for param in self.task2.encoders.parameters():
+            param.requires_grad = False
 
         del state_dict
 
