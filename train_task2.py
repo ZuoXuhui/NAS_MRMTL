@@ -46,7 +46,7 @@ def set_random_seed(seed, deterministic=False):
 def parse_args():
     parser = argparse.ArgumentParser(description='Train')
     parser.add_argument('--config',
-                        default="./config/MFNet_mit_b4_nddr_task2_std_loss.yaml",
+                        default="./config/MFNet_mit_b4_nddr_task2_mask_loss_patch_sd.yaml",
                         help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(
@@ -54,7 +54,7 @@ def parse_args():
         help='the pretrained ckpt file to load from')
     parser.add_argument(
         '--resume-from',
-        # default="./work_dirs/MFNet_mit_b4_nddr_task2_noenhance_loss_weights_patch64/latest.pth",
+        # default="./work_dirs/MFNet_mit_b4_nddr_task2_max_loss_weights_color/latest.pth",
         help='the checkpoint file to resume from')
     group_gpus = parser.add_mutually_exclusive_group()
     group_gpus.add_argument(
@@ -205,17 +205,19 @@ def main():
             minibatch = dataloader.next()
             modal_x = minibatch['modal_x']
             modal_y = minibatch['modal_y']
+            label = minibatch['label']
             label_x = minibatch['label_x']
             label_y = minibatch['label_y']
             Mask = minibatch['Mask']
 
             modal_x = modal_x.cuda(non_blocking=True)
             modal_y = modal_y.cuda(non_blocking=True)
+            label = label.cuda(non_blocking=True)
             label_x = label_x.cuda(non_blocking=True)
             label_y = label_y.cuda(non_blocking=True)
             Mask = Mask.cuda(non_blocking=True)
 
-            results = model.loss(modal_x, modal_y, label_x, label_y, Mask)
+            results = model.loss(modal_x, modal_y, label_x, label_y, Mask, label)
             loss = results.loss
 
             optimizer.zero_grad()

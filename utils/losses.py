@@ -2,6 +2,7 @@ import random
 import numpy as np
 from math import exp
 
+import cv2
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -220,13 +221,106 @@ class std_loss:
         std1 = std(img1)
         std2 = std(img2)
 
-        map = torch.where((std1 - std2) > 0, 1, 0)
-        # w1 = std1 / (std1 + std2 + 1e-6)
-        # w2 = std2 / (std1 + std2 + 1e-6)
-
-        joint_img = map * img1 + (1 - map) * img2
+        # map = torch.where((std1 - std2) > 0, 1, 0)
+        # joint_img = map * img1 + (1 - map) * img2
+        
+        w1 = std1 / (std1 + std2 + 1e-6)
+        w2 = std2 / (std1 + std2 + 1e-6)
+        
+        joint_img = w1 * img1 + w2 * img2
+        
         loss = self.l1_loss(fuse, joint_img)
         
+        return loss
+
+
+class mask_mse_loss:
+    def __init__(self, patch_size=32, ignore_idx=255):
+        self.patch_size = patch_size
+        self.ignore_idx = ignore_idx
+        
+        self.l1_loss = nn.L1Loss()
+        
+
+    def process_mask(self, mask):
+        mask[mask == self.ignore_idx] == 0
+        mask[mask > 0] = 255
+        mask = mask.detach().cpu().numpy().astype(np.uint8)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        blurred_mask = np.zeros_like(mask, dtype=np.float32)
+        for contour in contours:
+            area = cv2.contourArea(contour)
+
+            if area > 5000:
+                kernel_size = (15, 15)
+            elif area > 1000:
+                kernel_size = (7, 7)
+            else:
+                kernel_size = (3, 3)
+
+            mask_region = np.zeros_like(mask, dtype=np.uint8)
+            cv2.drawContours(mask_region, [contour], -1, 255, thickness=cv2.FILLED)
+
+            blurred_region = cv2.GaussianBlur(mask_region.astype(np.float32), kernel_size, 0)
+            
+            blurred_mask += blurred_region
+
+        blurred_mask = blurred_mask / 255
+        blurred_mask = torch.tensor(blurred_mask)
+
+        return blurred_mask
+
+    def get_sd_weights(self, fuse, img1, img2, Mask):
+        # patch_matrix  # (b, c, N, patch_size * patch_size)
+        coordinates = get_random_patch_coordinates(Mask, self.patch_size, self.patch_size)
+        patch_fuse = extract_patches_from_image(fuse, coordinates, self.patch_size, self.patch_size)
+        patch_img1 = extract_patches_from_image(img1, coordinates, self.patch_size, self.patch_size)
+        patch_img2 = extract_patches_from_image(img2, coordinates, self.patch_size, self.patch_size)
+
+        b0, c0, n0, p0 = patch_fuse.shape
+        b1, c1, n1, p1 = patch_img1.shape
+        b2, c2, n2, p2 = patch_img2.shape
+        assert n0 == n1 == n2 and p0 == p1 == p2, \
+                f"The number of patches ({n0}, {n1} and {n2}) or the patch sice ({p0}, {p1} and {p2}) doesn't match ."
+
+        mu1 = torch.mean(patch_img1, dim=3)
+        mu2 = torch.mean(patch_img2, dim=3)
+
+        mu1_re = mu1.view(b1, c1, n1, 1).repeat(1, 1, 1, p1)
+        mu2_re = mu2.view(b2, c2, n2, 1).repeat(1, 1, 1, p2)
+
+        # SD, b1 * c1 * n1 * 1
+        sd1 = torch.sqrt(torch.sum(((patch_img1 - mu1_re) ** 2), dim=3) / p1)
+        sd2 = torch.sqrt(torch.sum(((patch_img2 - mu2_re) ** 2), dim=3) / p2)
+
+        sd1 = torch.mean(sd1, dim=1)
+        sd2 = torch.mean(sd2, dim=1)
+        
+        w1 = sd1 / (sd1 + sd2 + 1e-6)
+        w2 = sd2 / (sd1 + sd2 + 1e-6)
+
+        w1 = w1.view(b1, 1, 1, 1)
+        w2 = w2.view(b2, 1, 1, 1)
+
+        return w1, w2
+
+    def __call__(self, fuse, img1, img2, Label, Mask):
+        Label = Label.float()
+        B, C, H, W = fuse.shape
+        mask = []
+        for b in range(B):
+            b_mask = Label[b]
+            b_mask = self.process_mask(b_mask)
+            mask.append(b_mask.unsqueeze(0))
+        mask = torch.stack(mask, dim=0).to(fuse.device, fuse.dtype)
+
+        sd1, sd2 = self.get_sd_weights(fuse, img1, img2, Mask)
+
+        joint_int = mask * torch.maximum(img1, img2) + (1 - mask) * (sd1*img1 + sd2*img2)
+
+        loss = self.l1_loss(fuse, joint_int)
+
         return loss
 
 
@@ -234,10 +328,11 @@ class fusion_loss:
     def __init__(self, weight):
         self.weight = weight
         self.l1_loss = nn.L1Loss()
+        self.mask_loss = mask_mse_loss()
         # self.patch_loss = patch_loss(64)
-        self.std_loss = std_loss()
-    
-    def __call__(self, fuse, img1, img2, Mask):
+        # self.std_loss = std_loss()
+        
+    def __call__(self, fuse, img1, img2, Mask, label):
         ## img1 is RGB, img2 is Gray
         fuse = fuse * Mask
 
@@ -258,11 +353,13 @@ class fusion_loss:
         joint_grad_x = torch.maximum(img1_grad_x, img2_grad_x)
         joint_grad_y = torch.maximum(img1_grad_y, img2_grad_y)
 
+        # con_loss = self.l1_loss(Y_fuse, torch.maximum(Y_img1, img2[:,0:1,:,:]))
         # con_loss = self.patch_loss(Y_fuse, Y_img1, img2[:,0:1,:,:], Mask)
-        con_loss = self.std_loss(Y_fuse, Y_img1, img2[:,0:1,:,:])
+        # con_loss = self.std_loss(Y_fuse, Y_img1, img2[:,0:1,:,:])
+        con_loss = self.mask_loss(Y_fuse, Y_img1, img2[:,0:1,:,:], label, Mask)
         gradient_loss = self.l1_loss(fuse_grad_x, joint_grad_x) + self.l1_loss(fuse_grad_y, joint_grad_y)
         color_loss = self.l1_loss(Cr_fuse, Cr_img1) + self.l1_loss(Cb_fuse, Cb_img1)
-        
+        # print(con_loss.item(), gradient_loss.item(), color_loss.item())
         loss = self.weight[0] * con_loss  + self.weight[1] * gradient_loss  + self.weight[2] * color_loss
         return loss
 

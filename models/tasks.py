@@ -51,8 +51,8 @@ class FusionTask:
     def __init__(self, weight):
         self.fusion_loss = fusion_loss(weight)
 
-    def loss(self, fus, img1, img2, Mask):
-        return self.fusion_loss(fus, img1, img2, Mask)
+    def loss(self, fus, img1, img2, Mask, label):
+        return self.fusion_loss(fus, img1, img2, Mask, label)
     
     def log_visualize(self, fus, img1, img2, writer, steps):
         img1, img2, fus = process_fusion_imgs(img1, img2, fus)

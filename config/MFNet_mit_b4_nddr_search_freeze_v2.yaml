@@ -1,8 +1,10 @@
 in_chans: 3
 num_classes: 9
-arch: "Task2"
+arch: "NAS_Task"
 backbone: 'mit_b4'
 log_level: 'INFO'
+load_task1: "./pretrained/task1.pth"
+load_task2: "./pretrained/task2.pth"
 
 datasets:
   dataset_name: "MFNetEnhance"
@@ -51,6 +53,8 @@ decoder:
 optimizer: "AdamW"
 
 weights:
+  FACTOR: 1
+  task1: [1, 1]
   task2: [0.5, 1, 1]
 
 train:
@@ -80,5 +84,5 @@ eval:
   eval_crop_size: [480, 640]
 
 checkpoint:
-  start_epoch: 50
-  step: 10
+  start_epoch: 2
+  step: 1

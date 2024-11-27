@@ -17,10 +17,10 @@ from datasets import FusionDataset
 def parse_args():
     parser = argparse.ArgumentParser(description='Test')
     parser.add_argument('--config',
-                        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/config/MFNet_mit_b4_nddr_task2_noenhance_loss_weights_patch64.yaml",
+                        default="./config/MFNet_mit_b4_nddr_task2_mask_loss_patch_sd.yaml",
                         help='train config file path')
     parser.add_argument('--data-dir',
-                        default="/data/zxh/dataset/MFNet_dataset/test/",
+                        default="/data1/ZXH/NAS_MRMTL_project/Dataset/MFNet/test/",
                         help='test data root')
     parser.add_argument('--modal-x',
                         default="visible",
@@ -30,11 +30,11 @@ def parse_args():
                         help='test data visible path')
     parser.add_argument(
         '--save-dir',
-        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/results_fusion/MFNet",
+        default="./results_fusion/MFNet",
         help='the dir to save logs and models')
     parser.add_argument(
         '--load-from',
-        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/work_dirs/MFNet_mit_b4_nddr_task2_noenhance_loss_weights_patch64/epoch-840.pth",
+        default="./work_dirs/MFNet_mit_b4_nddr_task2_mask_loss_patch_sd/latest.pth",
         help='the checkpoint file to resume from')
     args = parser.parse_args()
     return args
@@ -42,7 +42,6 @@ def parse_args():
 
 def main():
     args = parse_args()
-
 
     if args.save_dir is not None:
         save_dir = args.save_dir
@@ -61,9 +60,9 @@ def main():
     elif cfg.arch == "Task2":
         from models import FusionTaskNet
         model = FusionTaskNet(cfg, norm_layer=nn.BatchNorm2d)
-    elif cfg.arch == "SingleTaskNet":
-        from models import SingleTaskNet
-        model = SingleTaskNet(cfg, norm_layer=nn.BatchNorm2d)
+    elif cfg.arch == "NAS_Task":
+        from models import NDDRTaskNet
+        model = NDDRTaskNet(cfg, norm_layer=nn.BatchNorm2d)
 
     # load checkpoint
     if args.load_from is not None:
@@ -85,10 +84,11 @@ def main():
             results = model(modal_x, modal_y)
             out = results.out2[0]
 
-            temp = out.cpu().numpy().transpose([1, 2, 0])
-            temp = np.array(temp * 255, dtype=np.uint8)
-            temp = cv2.cvtColor(temp, cv2.COLOR_RGB2BGR)
-            cv2.imwrite(os.path.join(save_dir, f"{filename}.png"), temp)
+            out = out.cpu().numpy().transpose([1, 2, 0])
+            out = (out - out.min()) / (out.max() - out.min())
+            out = np.array(out * 255, dtype=np.uint8)
+            out = cv2.cvtColor(out, cv2.COLOR_RGB2BGR)
+            cv2.imwrite(os.path.join(save_dir, f"{filename}.png"), out)
             
 
 if __name__ == '__main__':

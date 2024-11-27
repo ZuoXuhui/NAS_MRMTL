@@ -64,7 +64,7 @@ def set_random_seed(seed, deterministic=False):
 def parse_args():
     parser = argparse.ArgumentParser(description='Train')
     parser.add_argument('--config',
-                        default="./config/MFNet_mit_b4_nddr_search_freeze .yaml",
+                        default="./config/MFNet_mit_b4_nddr_search_freeze_v2.yaml",
                         help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(

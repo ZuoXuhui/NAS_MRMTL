@@ -22,6 +22,8 @@ def get_nddr(cfg, in_channels, out_channels):
         assert in_channels == out_channels
         if cfg.nddr.NDDR_TYPE == '':
             return NDDR(cfg, out_channels)
+        elif cfg.nddr.NDDR_TYPE == 'cross_nddr':
+            return CrossNDDR(cfg, out_channels)
         elif cfg.nddr.NDDR_TYPE == 'single_side':
             return SingleSideNDDR(cfg, out_channels, False)
         elif cfg.nddr.NDDR_TYPE == 'single_side_reverse':
@@ -112,6 +114,54 @@ class NDDR(nn.Module):
         out2 = self.bn2(out2)
         out1 = self.activation(out1)
         out2 = self.activation(out2)
+        return out1, out2
+
+
+class CrossNDDR(nn.Module):
+    def __init__(self, cfg, out_channels):
+        super(CrossNDDR, self).__init__()
+        init_weights = cfg.nddr.INIT
+        norm = get_nddr_bn(cfg)
+
+        self.a11 = nn.Parameter(torch.tensor(init_weights[0]))
+        self.a22 = nn.Parameter(torch.tensor(init_weights[0]))
+        self.a12 = nn.Parameter(torch.tensor(init_weights[1]))
+        self.a21 = nn.Parameter(torch.tensor(init_weights[1]))
+        
+        self.conv1 = nn.Conv2d(out_channels * 2, out_channels, kernel_size=1, bias=False)
+        self.conv2 = nn.Conv2d(out_channels * 2, out_channels, kernel_size=1, bias=False)
+        
+        # Initialize weight
+        if len(init_weights):
+            self.conv1.weight = nn.Parameter(torch.cat([
+                torch.eye(out_channels) * init_weights[0],
+                torch.eye(out_channels) * init_weights[1]
+            ], dim=1).view(out_channels, -1, 1, 1))
+            self.conv2.weight = nn.Parameter(torch.cat([
+                torch.eye(out_channels) * init_weights[1],
+                torch.eye(out_channels) * init_weights[0]
+            ], dim=1).view(out_channels, -1, 1, 1))
+        else:
+            nn.init.kaiming_normal_(self.conv1.weight, mode='fan_out', nonlinearity='relu')
+            nn.init.kaiming_normal_(self.conv2.weight, mode='fan_out', nonlinearity='relu')
+
+        self.activation = nn.ReLU()
+
+        self.bn1 = norm(out_channels)
+        self.bn2 = norm(out_channels)
+
+    def forward(self, feature1, feature2):
+        x = torch.cat([feature1, feature2], 1)
+        out1 = self.conv1(x)
+        out2 = self.conv2(x)
+        out1 = self.bn1(out1)
+        out2 = self.bn2(out2)
+        out1 = self.activation(out1)
+        out2 = self.activation(out2)
+
+        out1 = self.a11 * (out1 + feature2) + self.a21 * (out2 + feature1)
+        out2 = self.a12 * (out2 + feature1) + self.a22 * (out1 + feature2)
+
         return out1, out2
 
 
