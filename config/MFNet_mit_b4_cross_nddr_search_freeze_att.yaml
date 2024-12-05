@@ -41,7 +41,7 @@ encoder:
 
 nddr:
   SEARCHSPACE: ''
-  NDDR_TYPE: ''
+  NDDR_TYPE: 'cross_nddr'
   NDDR_BN_TYPE: 'default'
   BATCH_NORM_MOMENTUM: 0.05
   INIT: [0.9, 0.1]
@@ -67,7 +67,7 @@ train:
   num_workers: 4
   
   nepochs: 5000
-  warm_up_epoch: 10
+  warm_up_epoch: 0
   train_scale_array: [0.5, 0.75, 1, 1.25, 1.5, 1.75]
   Mask:
    size: 32
@@ -84,5 +84,5 @@ eval:
   eval_crop_size: [480, 640]
 
 checkpoint:
-  start_epoch: 2
-  step: 1
+  start_epoch: 0
+  step: 2

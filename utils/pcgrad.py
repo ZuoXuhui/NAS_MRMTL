@@ -61,14 +61,15 @@ class PCGrad():
     def _project_conflicting(self, grads, has_grads, shapes=None):
         shared = torch.stack(has_grads).prod(0).bool()
         pc_grad, num_task = copy.deepcopy(grads), len(grads)
-        for i in range(len(pc_grad)):
-            g_i = pc_grad[i]
-            for j in range(i+1, len(grads)):
-                g_j = grads[j]
+
+        # print(torch.dot(pc_grad[0], pc_grad[1]))
+
+        for g_i in pc_grad:
+            random.shuffle(grads)
+            for g_j in grads:
                 g_i_g_j = torch.dot(g_i, g_j)
                 if g_i_g_j < 0:
-                    print("grad conflict")
-                    pc_grad[i] -= (g_i_g_j) * g_j / (g_j.norm()**2)
+                    g_i = g_i - (g_i_g_j) * g_j / (g_j.norm()**2)
         
         merged_grad = torch.zeros_like(grads[0]).to(grads[0].device)
         if self._reduction:

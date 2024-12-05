@@ -21,6 +21,7 @@ from utils.init_func import group_weight
 from utils.lr_policy import WarmUpPolyLR
 from utils.visualization import print_iou
 from utils.pyt_utils import all_reduce_tensor
+from utils.grad import GradBlance
 
 from tensorboardX import SummaryWriter
 
@@ -64,7 +65,7 @@ def set_random_seed(seed, deterministic=False):
 def parse_args():
     parser = argparse.ArgumentParser(description='Train')
     parser.add_argument('--config',
-                        default="./config/MFNet_mit_b4_cross_att_search_freeze.yaml",
+                        default="./config/MFNet_mit_b4_cross_att_search_freeze_Nash.yaml",
                         help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(
@@ -191,6 +192,12 @@ def main():
             from datasets import MFNetDataset as TestDataset
         test_dataset = TestDataset(cfg, stage="test")
         logger.info(f'Load test datasets numbers: {len(test_dataset)}')
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    if distributed:
+        model=torch.nn.DataParallel(model)
+
     # set optimizer
     base_lr = cfg.train.lr
     
@@ -199,21 +206,18 @@ def main():
 
     if cfg.optimizer == 'AdamW':
         optimizer = torch.optim.AdamW(params_list, lr=base_lr, betas=(0.9, 0.999), weight_decay=cfg.train.weight_decay)
-    elif cfg.optimizer == 'SGDM':
+    elif cfg.optimizer == 'SGD':
         optimizer = torch.optim.SGD(params_list, lr=base_lr, momentum=cfg.train.momentum, weight_decay=cfg.train.weight_decay)
     else:
         raise NotImplementedError
     
+    optimizer = GradBlance(optimizer, n_tasks=2, device=device)
+
     # config lr policy
     niters_per_epoch = len(train_dataset) // cfg.train.batch_size # will drop last ones
     total_iteration = cfg.train.nepochs * niters_per_epoch
     lr_policy = WarmUpPolyLR(base_lr, cfg.train.lr_power, total_iteration, niters_per_epoch * cfg.train.warm_up_epoch)
-    
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
-    if distributed:
-        model=torch.nn.DataParallel(model)
-        
+
     # resume training
     state_epoch = 0
     if args.resume_from is not None:
@@ -264,12 +268,12 @@ def main():
             else:
                 results = model.loss(modal_x, modal_y, label, label_x, label_y, Mask)
             
-            loss = results.loss
             task1_loss = results.loss1
             task2_loss = results.loss2
-
+            
             optimizer.zero_grad()
-            loss.backward()
+            losses = torch.stack((task1_loss, task2_loss))
+            loss = optimizer.backward(losses)
             optimizer.step()
 
             current_idx = epoch * niters_per_epoch + idx 
@@ -280,8 +284,6 @@ def main():
 
             if distributed:
                 loss = all_reduce_tensor(loss, world_size=num_gpus)
-                task1_loss = all_reduce_tensor(task1_loss, world_size=num_gpus)
-                task2_loss = all_reduce_tensor(task2_loss, world_size=num_gpus)
             
             sum_loss += loss.item()
             sum_task1_loss += task1_loss.item()

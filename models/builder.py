@@ -189,7 +189,7 @@ class NDDRTaskNet(nn.Module):
         nddrs = []
         for stage_id in range(self.num_stages):
             out_channels = embed_dims[stage_id]
-            nddr = get_nddr(cfg, out_channels, out_channels)
+            nddr = get_nddr(cfg, out_channels, out_channels, cfg.encoder.num_heads[stage_id], cfg.encoder.sr_ratios[stage_id])
             nddrs.append(nddr)
         self.nddrs = nn.ModuleList(nddrs)
         
@@ -211,8 +211,8 @@ class NDDRTaskNet(nn.Module):
             state_dict = task_file1
         self.task1.load_state_dict(state_dict, strict=False)
 
-        # freeze encoders
-        for param in self.task1.encoders.parameters():
+        # freeze encoders except attention block
+        for name, param in self.task1.encoders.named_parameters():
             param.requires_grad = False
 
         if isinstance(task_file2, str):
@@ -221,8 +221,8 @@ class NDDRTaskNet(nn.Module):
             state_dict = task_file2
         self.task2.load_state_dict(state_dict, strict=False)
         
-        # freeze encoders
-        for param in self.task2.encoders.parameters():
+        # freeze encoders except attention block
+        for name, param in self.task2.encoders.named_parameters():
             param.requires_grad = False
 
         del state_dict

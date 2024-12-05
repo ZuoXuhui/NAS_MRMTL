@@ -312,10 +312,14 @@ class mask_mse_loss:
         for b in range(B):
             b_mask = Label[b]
             b_mask = self.process_mask(b_mask)
-            mask.append(b_mask.unsqueeze(0))
+            mask.append(torch.stack([b_mask, b_mask, b_mask], dim=0))
         mask = torch.stack(mask, dim=0).to(fuse.device, fuse.dtype)
 
-        sd1, sd2 = self.get_sd_weights(fuse, img1, img2, Mask)
+        # calculate sd 
+        Y_fuse = 0.299 * fuse[:, 0:1] + 0.587 * fuse[:, 1:2] + 0.114 * fuse[:, 2:3]
+        Y_img1 = 0.299 * img1[:, 0:1] + 0.587 * img1[:, 1:2] + 0.114 * img1[:, 2:3]
+        Y_img2 = 0.299 * img2[:, 0:1] + 0.587 * img2[:, 1:2] + 0.114 * img2[:, 2:3]
+        sd1, sd2 = self.get_sd_weights(Y_fuse, Y_img1, Y_img2, Mask)
 
         joint_int = mask * torch.maximum(img1, img2) + (1 - mask) * (sd1*img1 + sd2*img2)
 
@@ -328,7 +332,7 @@ class fusion_loss:
     def __init__(self, weight):
         self.weight = weight
         self.l1_loss = nn.L1Loss()
-        self.mask_loss = mask_mse_loss()
+        self.mask_loss = mask_mse_loss(64)
         # self.patch_loss = patch_loss(64)
         # self.std_loss = std_loss()
         
@@ -356,7 +360,7 @@ class fusion_loss:
         # con_loss = self.l1_loss(Y_fuse, torch.maximum(Y_img1, img2[:,0:1,:,:]))
         # con_loss = self.patch_loss(Y_fuse, Y_img1, img2[:,0:1,:,:], Mask)
         # con_loss = self.std_loss(Y_fuse, Y_img1, img2[:,0:1,:,:])
-        con_loss = self.mask_loss(Y_fuse, Y_img1, img2[:,0:1,:,:], label, Mask)
+        con_loss = self.mask_loss(fuse, img1, img2, label, Mask)
         gradient_loss = self.l1_loss(fuse_grad_x, joint_grad_x) + self.l1_loss(fuse_grad_y, joint_grad_y)
         color_loss = self.l1_loss(Cr_fuse, Cr_img1) + self.l1_loss(Cb_fuse, Cb_img1)
         # print(con_loss.item(), gradient_loss.item(), color_loss.item())

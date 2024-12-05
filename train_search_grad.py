@@ -65,7 +65,7 @@ def set_random_seed(seed, deterministic=False):
 def parse_args():
     parser = argparse.ArgumentParser(description='Train')
     parser.add_argument('--config',
-                        default="./config/MFNet_mit_b4_nddr_search_freeze_PCGrad.yaml",
+                        default="./config/MFNet_mit_b4_cross_att_search_freeze_PCGrad.yaml",
                         help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(
@@ -244,6 +244,8 @@ def main():
         dataloader = iter(train_loader)
 
         sum_loss = 0
+        sum_task1_loss = 0
+        sum_task2_loss = 0
 
         for idx in pbar:
             minibatch = dataloader.next()
@@ -267,9 +269,11 @@ def main():
                 results = model.loss(modal_x, modal_y, label, label_x, label_y, Mask)
             
             loss = results.loss
+            task1_loss = results.loss1
+            task2_loss = results.loss2
             
             optimizer.zero_grad()
-            optimizer.pc_backward([results.loss1, results.loss2])
+            optimizer.pc_backward([task1_loss, task2_loss])
             optimizer.step()
 
             current_idx = epoch * niters_per_epoch + idx 
@@ -282,16 +286,21 @@ def main():
                 loss = all_reduce_tensor(loss, world_size=num_gpus)
             
             sum_loss += loss.item()
+            sum_task1_loss += task1_loss.item()
+            sum_task2_loss += task2_loss.item()
             print_str = 'Epoch {}/{}'.format(epoch, cfg.train.nepochs) \
                     + ' Iter {}/{}:'.format(idx + 1, niters_per_epoch) \
                     + ' lr=%.4e' % lr \
-                    + ' loss=%.4f total_loss=%.4f' % (loss.item(), (sum_loss / (idx + 1)))
+                    + ' loss=%.4f ' % (loss.item()) \
+                    + ' task1_loss=%.4f task2_loss=%.4f total_loss=%.4f' % ((sum_task1_loss / (idx + 1)), (sum_task2_loss / (idx + 1)), (sum_loss / (idx + 1)))
             pbar.set_description(print_str, refresh=False)
 
             torch.cuda.empty_cache()
         
         if (distributed and (args.local_rank == 0)) or (not distributed):
             writer.add_scalar('train_loss', sum_loss / len(pbar), epoch)
+            writer.add_scalar('task1_loss', sum_task1_loss / len(pbar), epoch)
+            writer.add_scalar('task2_loss', sum_task2_loss / len(pbar), epoch)
 
             latest_epoch_checkpoint = os.path.join(cfg.work_dir, f'latest.pth')
             state_dict = model.module.state_dict() if distributed else model.state_dict()

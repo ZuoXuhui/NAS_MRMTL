@@ -13,7 +13,7 @@ datasets:
   path1_HQ: "visible_HQ"
   path1_suffix: ".png"
   path2: "infrared"
-  path2_HQ: "infrared_HQ"
+  path2_HQ: "infrared_HQ_brighter"
   path2_suffix: ".png"
   label: "label"
   label_suffix: ".png"
