@@ -1,10 +1,8 @@
 in_chans: 3
 num_classes: 9
-arch: "NAS_Task"
+arch: "Task2"
 backbone: 'mit_b4'
 log_level: 'INFO'
-load_task1: "./pretrained/task1.pth"
-load_task2: "./pretrained/task2.pth"
 
 datasets:
   dataset_name: "MFNetEnhance"
@@ -15,7 +13,7 @@ datasets:
   path1_HQ: "visible_HQ"
   path1_suffix: ".png"
   path2: "infrared"
-  path2_HQ: "infrared_HQ"
+  path2_HQ: "infrared_HQ_brighter"
   path2_suffix: ".png"
   label: "label"
   label_suffix: ".png"
@@ -41,7 +39,7 @@ encoder:
 
 nddr:
   SEARCHSPACE: ''
-  NDDR_TYPE: 'cross_attention'
+  NDDR_TYPE: ''
   NDDR_BN_TYPE: 'default'
   BATCH_NORM_MOMENTUM: 0.05
   INIT: [0.9, 0.1]
@@ -53,12 +51,10 @@ decoder:
 optimizer: "AdamW"
 
 weights:
-  FACTOR: 1
-  task1: [1, 1]
-  task2: [0.5, 1, 1]
+  task2: [0.5, 1, 2]
 
 train:
-  lr: 3e-6
+  lr: 6e-5
   lr_power: 0.9
   momentum: 0.9
   weight_decay: 0.01
@@ -67,7 +63,7 @@ train:
   num_workers: 4
   
   nepochs: 5000
-  warm_up_epoch: 0
+  warm_up_epoch: 10
   train_scale_array: [0.5, 0.75, 1, 1.25, 1.5, 1.75]
   Mask:
    size: 32
@@ -84,5 +80,5 @@ eval:
   eval_crop_size: [480, 640]
 
 checkpoint:
-  start_epoch: 0
-  step: 2
+  start_epoch: 50
+  step: 10

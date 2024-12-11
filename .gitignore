@@ -2,6 +2,8 @@ __pycache__
 pretrained/*
 result*
 work_dirs
-*/__pycache__
-*/*/__pycache__/
-*/*/*/__pycache__/
+*/__pycache__/*
+*/*/__pycache__/*
+*/*/*/__pycache__/*
+datasets/__pycache__/*
+models/__pycache__/*

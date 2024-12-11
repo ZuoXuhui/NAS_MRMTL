@@ -180,7 +180,7 @@ class SelfAttention(nn.Module):
         attn = self.attn_drop(attn)
 
         x_atten = (attn @ v).transpose(1, 2).reshape(B, N, C)
-        x_out = self.proj(x_atten+ x) 
+        x_out = self.proj(x_atten + x) 
         x_out = self.proj_drop(x_out)
 
         return x_out

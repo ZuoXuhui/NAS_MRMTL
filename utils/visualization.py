@@ -67,9 +67,9 @@ def print_iou(metrics, class_names=None, show_no_back=False, print=False):
         else:
             cls = '%d %s' % (i+1, class_names[i])
         lines.append('%-8s\t%.3f%%\t%.3f%%' % (cls, iou[i] * 100, class_acc[i] * 100))
-    mean_IoU = np.nanmean(iou)
+    mean_IoU = np.nanmean(np.nan_to_num(iou))
     if show_no_back:
-        mean_IoU_no_back = np.nanmean(iou[1:])
+        mean_IoU_no_back = np.nanmean(iou[1:].nan_to_num())
         lines.append('----------     %-8s\t%.3f%%\t%-8s\t%.3f%%\t%-8s\t%.3f%%\t%-8s\t%.3f%%' % ('mean_IoU', mean_IoU * 100, 'mean_IU_no_back', mean_IoU_no_back*100,
                                                                                                 'mean_pixel_acc', mean_pixel_acc*100, 'pixel_acc',pixel_acc*100))
     else:

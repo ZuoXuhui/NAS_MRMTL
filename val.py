@@ -181,16 +181,16 @@ class Evaluator(object):
 def parse_args():
     parser = argparse.ArgumentParser(description='Test')
     parser.add_argument('--config',
-                        default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/config/MFNet_mit_b4_nddr_search.yaml",
+                        default="./config/FMB_mit_b4_nddr_task1_lighter_enhance_weights_lovasz_mosaic.yaml",
                         help='train config file path')
     parser.add_argument(
         '--save-dir',
-        # default="/data/zxh/SegFormer-main/tools/work_dirs/segformer.b3.1024x1024.mfnet.160k/latest.pth",
+        default="./results/FMB",
         help='the dir to save logs and models')
     parser.add_argument(
         '--load-from',
         # default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/pretrained/MFNet.ckpt",
-        # default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/work_dirs/MFNet_mit_b4_nddr_search/latest.pth",
+        default="./work_dirs/FMB_mit_b4_nddr_task1_lighter_enhance_weights_lovasz_mosaic/epoch-28.pth",
         help='the checkpoint file to resume from')
     args = parser.parse_args()
     return args
@@ -214,6 +214,9 @@ def main():
 
     if "MFNet" in cfg.datasets.dataset_name:
         from datasets import MFNetDataset as RGBXDataset
+    elif "FMB" in cfg.datasets.dataset_name:
+        from datasets import FMBDataset as RGBXDataset
+    
     test_dataset = RGBXDataset(cfg, stage="test")
 
 
@@ -224,7 +227,6 @@ def main():
         from models import SegTaskNet
         model = SegTaskNet(cfg, norm_layer=nn.BatchNorm2d)
     
-    logger.info(model)
     # load checkpoint
     if args.load_from is not None:
         state_dict = torch.load(args.load_from, map_location=torch.device('cpu'))

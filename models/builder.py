@@ -255,7 +255,6 @@ class NDDRTaskNet(nn.Module):
 
         result.loss1 = self.task1.task.loss(result.out1, label)
         result.loss2 = self.task2.task.loss(result.out2, label_x, label_y, Mask, label)
-        # result.loss3 = F.l1_loss(search_feat_sem, fuse_xy_sem) + F.l1_loss(search_feat_vis, fuse_xy_vis)
         result.loss = result.loss1 + self.cfg.weights.FACTOR * result.loss2
 
         return result

@@ -127,7 +127,7 @@ class CustomDataset(Dataset):
                 img_infos.append(img_info)
 
         return img_infos
-    
+
     def stitch_imgs(self, i, img, img4, yc, xc, h, w, s_h, s_w, gt=False):
         if i == 0:  # top left
             h_c, w_c = yc, xc
@@ -186,7 +186,6 @@ class CustomDataset(Dataset):
             gt_4   = self.stitch_imgs(i, gt, gt_4, yc, xc, h, w, s_h, s_w, True)
 
         return img1_4, img2_4, gt_4
-
 
     @staticmethod
     def _open_image(filepath, dtype=None):

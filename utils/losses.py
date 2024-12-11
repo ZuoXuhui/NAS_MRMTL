@@ -191,49 +191,6 @@ class patch_loss(nn.Module):
         return loss
 
 
-def gaussian(window_size, sigma):
-    gauss = torch.Tensor([exp(-(x - window_size//2)**2/float(2*sigma**2)) for x in range(window_size)])
-    return gauss/gauss.sum()
-
-
-def create_window(window_size, channel=1):
-    _1D_window = gaussian(window_size, 1.5).unsqueeze(1)                            # sigma = 1.5    shape: [11, 1]
-    _2D_window = _1D_window.mm(_1D_window.t()).float().unsqueeze(0).unsqueeze(0)    # unsqueeze()函数,增加维度  .t() 进行了转置 shape: [1, 1, 11, 11]
-    window = _2D_window.expand(channel, 1, window_size, window_size).contiguous()   # window shape: [1,1, 11, 11]
-    return window
-
-
-def std(img,  window_size=9):
-    padd = window_size // 2
-    channel = img.shape[1]
-    window = create_window(window_size, channel=channel).to(img.device)
-    mu = F.conv2d(img, window, padding=padd, groups=channel)
-    mu_sq = mu.pow(2)
-    sigma = F.conv2d(img * img, window, padding=padd, groups=channel) - mu_sq
-    return sigma
-
-
-class std_loss:
-    def __init__(self):
-        self.l1_loss = nn.L1Loss()
-
-    def __call__(self, fuse, img1, img2):
-        std1 = std(img1)
-        std2 = std(img2)
-
-        # map = torch.where((std1 - std2) > 0, 1, 0)
-        # joint_img = map * img1 + (1 - map) * img2
-        
-        w1 = std1 / (std1 + std2 + 1e-6)
-        w2 = std2 / (std1 + std2 + 1e-6)
-        
-        joint_img = w1 * img1 + w2 * img2
-        
-        loss = self.l1_loss(fuse, joint_img)
-        
-        return loss
-
-
 class mask_mse_loss:
     def __init__(self, patch_size=32, ignore_idx=255):
         self.patch_size = patch_size
@@ -241,7 +198,6 @@ class mask_mse_loss:
         
         self.l1_loss = nn.L1Loss()
         
-
     def process_mask(self, mask):
         mask[mask == self.ignore_idx] == 0
         mask[mask > 0] = 255
@@ -341,18 +297,16 @@ class fusion_loss:
         fuse = fuse * Mask
 
         YCbCr_fuse = RGB2YCrCb(fuse)
-        Y_fuse = YCbCr_fuse[:,0:1,:,:]
         Cr_fuse = YCbCr_fuse[:,1:2,:,:]
         Cb_fuse = YCbCr_fuse[:,2:,:,:]
 
         YCbCr_img1 = RGB2YCrCb(img1)
-        Y_img1 = YCbCr_img1[:,0:1,:,:]
         Cr_img1 = YCbCr_img1[:,1:2,:,:]
         Cb_img1 = YCbCr_img1[:,2:,:,:]
 
-        fuse_grad_x, fuse_grad_y = Sobelxy(Y_fuse)
-        img1_grad_x, img1_grad_y = Sobelxy(Y_img1)
-        img2_grad_x, img2_grad_y = Sobelxy(img2[:,0:1,:,:])
+        fuse_grad_x, fuse_grad_y = combine_sobel_xy(fuse)
+        img1_grad_x, img1_grad_y = combine_sobel_xy(img1)
+        img2_grad_x, img2_grad_y = combine_sobel_xy(img2)
 
         joint_grad_x = torch.maximum(img1_grad_x, img2_grad_x)
         joint_grad_y = torch.maximum(img1_grad_y, img2_grad_y)
