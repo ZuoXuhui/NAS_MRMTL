@@ -65,7 +65,7 @@ def set_random_seed(seed, deterministic=False):
 def parse_args():
     parser = argparse.ArgumentParser(description='Train')
     parser.add_argument('--config',
-                        default="./config/MFNet_mit_b4_cross_att_search_freeze_Nash.yaml",
+                        default="./config/MFNet_mit_b4_cross_att_search_freeze_Nash_mixed.yaml",
                         help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(
@@ -164,7 +164,7 @@ def main():
         logger.info(f"{cfg.arch} model init done")
 
     # set dataloader
-    from datasets import Train_pipline
+    from datasets import Train_search_pipline as Train_pipline
     if cfg.datasets.dataset_name == "MFNetEnhance":
         from datasets import MFNetEnhanceDataset as RGBXDataset
     # set train dataset

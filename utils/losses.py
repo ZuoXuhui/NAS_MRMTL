@@ -71,8 +71,8 @@ def Sobelxy(x):
     weightx = nn.Parameter(data=kernelx, requires_grad=False).cuda()
     weighty = nn.Parameter(data=kernely, requires_grad=False).cuda()
     
-    sobelx=F.conv2d(x, weightx, padding=1)
-    sobely=F.conv2d(x, weighty, padding=1)
+    sobelx = F.conv2d(x, weightx, padding=1)
+    sobely = F.conv2d(x, weighty, padding=1)
     #return torch.abs(sobelx)+torch.abs(sobely)
     return sobelx, sobely
 
@@ -307,6 +307,10 @@ class fusion_loss:
         fuse_grad_x, fuse_grad_y = combine_sobel_xy(fuse)
         img1_grad_x, img1_grad_y = combine_sobel_xy(img1)
         img2_grad_x, img2_grad_y = combine_sobel_xy(img2)
+
+        # fuse_grad_x, fuse_grad_y = Sobelxy(YCbCr_fuse[:,0:1,:,:])
+        # img1_grad_x, img1_grad_y = Sobelxy(YCbCr_img1[:,0:1,:,:])
+        # img2_grad_x, img2_grad_y = Sobelxy(img2[:,0:1,:,:])
 
         joint_grad_x = torch.maximum(img1_grad_x, img2_grad_x)
         joint_grad_y = torch.maximum(img1_grad_y, img2_grad_y)

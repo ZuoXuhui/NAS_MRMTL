@@ -37,13 +37,6 @@ encoder:
   attn_drop_rate: 0.0
   drop_path_rate: 0.1
 
-nddr:
-  SEARCHSPACE: ''
-  NDDR_TYPE: ''
-  NDDR_BN_TYPE: 'default'
-  BATCH_NORM_MOMENTUM: 0.05
-  INIT: [0.9, 0.1]
-
 decoder:
   channels: [64, 128, 320, 512]
   embed_dim: 512
@@ -51,7 +44,7 @@ decoder:
 optimizer: "AdamW"
 
 weights:
-  task2: [0.5, 1, 2]
+  task2: [0.5, 5, 2]
 
 train:
   lr: 6e-5

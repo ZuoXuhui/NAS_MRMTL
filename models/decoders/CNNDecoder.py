@@ -48,8 +48,8 @@ class CNNHead(nn.Module):
                             norm_layer(embedding_dim),
                             nn.ReLU(inplace=True),
                             nn.Conv2d(in_channels=embedding_dim, out_channels=3, kernel_size=1),
-                            # nn.Sigmoid()
-                            nn.Tanh()
+                            nn.Sigmoid()
+                            # nn.Tanh()
                             )
        
     def forward(self, inputs):
@@ -72,5 +72,5 @@ class CNNHead(nn.Module):
         F_cat = torch.cat([F4_c, F3_c, F2_c, F1_c, F0], dim=1)
    
         Fuse = self.CNN_fuse(F_cat)
-        Fuse = Fuse / 2 + 0.5
+        # Fuse = Fuse / 2 + 0.5
         return Fuse

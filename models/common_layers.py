@@ -29,6 +29,8 @@ def get_nddr(cfg, in_channels, out_channels, nums_head, sr_ratio):
             return CrossNDDR(cfg, out_channels)
         elif cfg.nddr.NDDR_TYPE == 'cross_attention':
             return AttentionSearch(cfg, out_channels, nums_head, sr_ratio)
+        elif cfg.nddr.NDDR_TYPE == 'cross_attention_add':
+            return ADDAttentionSearch(cfg, out_channels, nums_head, sr_ratio)
         elif cfg.nddr.NDDR_TYPE == 'single_side':
             return SingleSideNDDR(cfg, out_channels, False)
         elif cfg.nddr.NDDR_TYPE == 'single_side_reverse':
@@ -237,6 +239,70 @@ class AttentionSearch(nn.Module):
 
         return out1, out2
 
+class ADDAttentionSearch(nn.Module):
+    def __init__(self, cfg, out_channels, num_heads=1, sr_ratio=1., attn_drop=0.0, proj_drop=0.0):
+        super(ADDAttentionSearch, self).__init__()
+        init_weights = cfg.nddr.INIT
+        norm = get_nddr_bn(cfg)
+
+        self.conv1 = nn.Conv2d(out_channels * 2, out_channels, kernel_size=1, bias=False)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=1, bias=False)
+
+        self.bn1 = norm(out_channels)
+        self.bn2 = norm(out_channels)
+
+        self.fusion_conv = nn.Conv2d(out_channels * 2, out_channels, kernel_size=1, bias=False)
+        self.fusion_bn = norm(out_channels)
+
+        self.SA = SelfAttention(out_channels, num_heads=num_heads, qkv_bias=False, qk_scale=None, attn_drop=attn_drop, proj_drop=proj_drop, sr_ratio=sr_ratio)
+
+        self.activation = nn.ReLU()
+
+        self._init_weights(out_channels, init_weights)
+
+    def _init_weights(self, out_channels, init_weights=None):
+        # Initialize weight
+        if len(init_weights):
+            self.fusion_conv.weight = nn.Parameter(torch.cat([
+                torch.eye(out_channels) * 0.5,
+                torch.eye(out_channels) * 0.5
+            ], dim=1).view(out_channels, -1, 1, 1))
+            self.conv1.weight = nn.Parameter(torch.cat([
+                torch.eye(out_channels) * init_weights[0],
+                torch.eye(out_channels) * init_weights[1]
+            ], dim=1).view(out_channels, -1, 1, 1))
+            self.conv2.weight = nn.Parameter(
+                (torch.eye(out_channels) * 0).view(out_channels, -1, 1, 1))
+        else:
+            nn.init.kaiming_normal_(self.fusion_conv.weight, mode='fan_out', nonlinearity='relu')
+            nn.init.kaiming_normal_(self.conv1.weight, mode='fan_out', nonlinearity='relu')
+            nn.init.kaiming_normal_(self.conv2.weight, mode='fan_out', nonlinearity='relu')
+
+    def forward(self, feature1, feature2):
+        B1, C1, H1, W1 = feature1.shape
+        B2, C2, H2, W2 = feature2.shape
+        assert B1 == B2 and C1 == C2 and H1 == H2 and W1 == W2, "feature1 and feature2 should have the same dimensions"
+ 
+        out = self.fusion_conv(torch.cat([feature1, feature2], 1))
+        out = self.fusion_bn(out)
+        out = self.activation(out)
+
+        out_flat = out.flatten(2).transpose(1, 2)  ##B HXW C
+
+        out = self.SA(out_flat, H1, W1)  ##B HXW C
+        out = out.permute(0, 2, 1).reshape(B1, C1, H1, W1).contiguous()
+
+        out1 = self.conv1(torch.cat([feature1, out], 1))
+        out2 = self.conv2(out)
+        out1 = self.bn1(out1)
+        out2 = self.bn2(out2)
+        out1 = self.activation(out1)
+        out2 = self.activation(out2)
+
+        # out1 = out1
+        out2 = feature2 + out2
+
+        return out1, out2
 
 class SingleSideNDDR(nn.Module):
     def __init__(self, cfg, out_channels, reverse):

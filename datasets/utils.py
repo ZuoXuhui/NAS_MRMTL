@@ -120,7 +120,9 @@ class MaskGenerator:
         else:
             raise AssertionError("Not valid mask type!")
 
-        if strategy == 'comp':
+        if strategy == 'none':
+            self.strategy = self.gen_nomasks
+        elif strategy == 'comp':
             self.strategy = self.gen_comp_masks
         elif strategy == 'rand_comp':
             self.strategy = self.gen_rand_comp_masks
@@ -138,6 +140,9 @@ class MaskGenerator:
 
         return mask
 
+    def gen_nomasks(self):
+        return 1, 1
+    
     def gen_comp_masks(self):
         mask = self.gen_mask()
         return mask, 1-mask

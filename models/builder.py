@@ -45,7 +45,8 @@ class SegTaskNet(nn.Module):
                                            in_chans=self.in_chans if stage_id == 0 else embed_dims[stage_id-1], embed_dims=embed_dims[stage_id], 
                                            num_heads=num_heads[stage_id], mlp_ratios=mlp_ratios[stage_id], qkv_bias=cfg.encoder.qkv_bias,
                                            qk_scale=cfg.encoder.qk_scale, drop_rate=cfg.encoder.drop_rate, attn_drop_rate=cfg.encoder.attn_drop_rate,
-                                           drop_path_rate=dpr[cur:cur+depths[stage_id]], sr_ratios=sr_ratios[stage_id])
+                                           drop_path_rate=dpr[cur:cur+depths[stage_id]], sr_ratios=sr_ratios[stage_id],
+                                           after_norm=norm_layer, use_after_norm=False)
             cur += depths[stage_id]
             encoders.append(encoder)
         self.encoders = nn.ModuleList(encoders)
@@ -116,7 +117,8 @@ class FusionTaskNet(nn.Module):
                                            in_chans=self.in_chans if stage_id == 0 else embed_dims[stage_id-1], embed_dims=embed_dims[stage_id], 
                                            num_heads=num_heads[stage_id], mlp_ratios=mlp_ratios[stage_id], qkv_bias=cfg.encoder.qkv_bias,
                                            qk_scale=cfg.encoder.qk_scale, drop_rate=cfg.encoder.drop_rate, attn_drop_rate=cfg.encoder.attn_drop_rate,
-                                           drop_path_rate=dpr[cur:cur+depths[stage_id]], sr_ratios=sr_ratios[stage_id])
+                                           drop_path_rate=dpr[cur:cur+depths[stage_id]], sr_ratios=sr_ratios[stage_id],
+                                           after_norm=norm_layer, use_after_norm=True)
             cur += depths[stage_id]
             encoders.append(encoder)
         self.encoders = nn.ModuleList(encoders)

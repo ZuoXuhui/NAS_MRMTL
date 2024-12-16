@@ -46,7 +46,7 @@ def set_random_seed(seed, deterministic=False):
 def parse_args():
     parser = argparse.ArgumentParser(description='Train')
     parser.add_argument('--config',
-                        default="./config/MFNet_mit_b4_nddr_task2_mask_loss_patch_sd_64_brighter_mosaic_grad_weights_tanh.yaml",
+                        default="./config/MFNet_mit_b4_nddr_task2_mask_loss_patch_sd_64_brighter_mosaic_grad_weights_higher_norm.yaml",
                         help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(

@@ -3,7 +3,7 @@ num_classes: 9
 arch: "NAS_Task"
 backbone: 'mit_b4'
 log_level: 'INFO'
-load_task1: "./pretrained/task1.pth"
+load_task1: "./pretrained/bak2/task1.pth"
 load_task2: "./pretrained/task2.pth"
 
 datasets:
@@ -15,7 +15,7 @@ datasets:
   path1_HQ: "visible_HQ"
   path1_suffix: ".png"
   path2: "infrared"
-  path2_HQ: "infrared_HQ"
+  path2_HQ: "infrared_HQ_brighter"
   path2_suffix: ".png"
   label: "label"
   label_suffix: ".png"
@@ -41,10 +41,10 @@ encoder:
 
 nddr:
   SEARCHSPACE: ''
-  NDDR_TYPE: 'cross_nddr'
+  NDDR_TYPE: 'cross_attention'
   NDDR_BN_TYPE: 'default'
   BATCH_NORM_MOMENTUM: 0.05
-  INIT: [0.9, 0.1]
+  INIT: [1.0, 0.0]
 
 decoder:
   channels: [64, 128, 320, 512]
@@ -55,10 +55,10 @@ optimizer: "AdamW"
 weights:
   FACTOR: 1
   task1: [1, 1]
-  task2: [0.5, 1, 1]
+  task2: [0.5, 2, 2]
 
 train:
-  lr: 6e-5
+  lr: 5e-6
   lr_power: 0.9
   momentum: 0.9
   weight_decay: 0.01
@@ -69,9 +69,6 @@ train:
   nepochs: 5000
   warm_up_epoch: 0
   train_scale_array: [0.5, 0.75, 1, 1.25, 1.5, 1.75]
-  Mask:
-   size: 32
-   strategy: "rand_comp"
 
   fix_bias: True
   bn_eps: 1e-3

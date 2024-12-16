@@ -181,16 +181,16 @@ class Evaluator(object):
 def parse_args():
     parser = argparse.ArgumentParser(description='Test')
     parser.add_argument('--config',
-                        default="./config/FMB_mit_b4_nddr_task1_lighter_enhance_weights_lovasz_mosaic.yaml",
+                        default="./config/MFNet_mit_b4_cross_att_search_freeze_Nash.yaml",
                         help='train config file path')
     parser.add_argument(
         '--save-dir',
-        default="./results/FMB",
+        default="./results/FMNet",
         help='the dir to save logs and models')
     parser.add_argument(
         '--load-from',
         # default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/pretrained/MFNet.ckpt",
-        default="./work_dirs/FMB_mit_b4_nddr_task1_lighter_enhance_weights_lovasz_mosaic/epoch-28.pth",
+        default="./work_dirs/MFNet_mit_b4_cross_att_search_freeze_Nash/epoch-11.pth",
         help='the checkpoint file to resume from')
     args = parser.parse_args()
     return args

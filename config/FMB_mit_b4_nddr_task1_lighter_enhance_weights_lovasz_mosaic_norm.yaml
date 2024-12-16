@@ -1,27 +1,23 @@
 in_chans: 3
-num_classes: 9
-arch: "NAS_Task"
+num_classes: 15
+arch: "Task1"
 backbone: 'mit_b4'
 log_level: 'INFO'
-load_task1: "./pretrained/task1.pth"
-load_task2: "./pretrained/task2.pth"
 
 datasets:
-  dataset_name: "MFNetEnhance"
-  image_height: 480
-  image_width: 640
-  root: "/data1/ZXH/NAS_MRMTL_project/Dataset/MFNet/"
+  dataset_name: "FMB"
+  image_height: 600
+  image_width: 800
+  root: "/data1/ZXH/dataset/FMB/"
   path1: "visible"
-  path1_HQ: "visible_HQ"
-  path1_suffix: ".png"
+  path1_suffix: ".png" 
   path2: "infrared"
-  path2_HQ: "infrared_HQ"
   path2_suffix: ".png"
   label: "label"
   label_suffix: ".png"
   split: null
   ignore_index: 255
-  class_names: ['unlabeled', 'car', 'person', 'bike', 'curve', 'car_stop', 'guardrail', 'color_cone', 'bump']
+  class_names: ['background', 'Road', 'Sidewalk', 'Building', 'Lamp', 'Sign', 'Vegetation', 'Sky', 'Person', 'Car', 'Truck', 'Bus', 'Motorcycle', 'Bicycle', 'Pole']
 
 num_stages: 4
 encoder:
@@ -39,13 +35,6 @@ encoder:
   attn_drop_rate: 0.0
   drop_path_rate: 0.1
 
-nddr:
-  SEARCHSPACE: ''
-  NDDR_TYPE: 'cross_nddr'
-  NDDR_BN_TYPE: 'default'
-  BATCH_NORM_MOMENTUM: 0.05
-  INIT: [0.9, 0.1]
-
 decoder:
   channels: [64, 128, 320, 512]
   embed_dim: 512
@@ -53,9 +42,7 @@ decoder:
 optimizer: "AdamW"
 
 weights:
-  FACTOR: 1
   task1: [1, 1]
-  task2: [0.5, 1, 1]
 
 train:
   lr: 6e-5
@@ -67,10 +54,10 @@ train:
   num_workers: 4
   
   nepochs: 5000
-  warm_up_epoch: 0
+  warm_up_epoch: 10
   train_scale_array: [0.5, 0.75, 1, 1.25, 1.5, 1.75]
   Mask:
-   size: 32
+   size: 40
    strategy: "rand_comp"
 
   fix_bias: True
@@ -81,8 +68,8 @@ eval:
   eval_stride_rate: 2/3
   eval_scale_array: [1]
   eval_flip: False
-  eval_crop_size: [480, 640]
+  eval_crop_size: [600, 800]
 
 checkpoint:
-  start_epoch: 0
+  start_epoch: 20
   step: 2

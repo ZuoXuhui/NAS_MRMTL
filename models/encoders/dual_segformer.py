@@ -224,7 +224,8 @@ class RGBXTransformerBlock(nn.Module):
     def __init__(self, img_size=224, patch_size=3, stride=2, depths=4, in_chans=3, num_classes=9, 
                  embed_dims=64, num_heads=1, mlp_ratios=4, qkv_bias=False,
                  qk_scale=None, drop_rate=0., attn_drop_rate=0., drop_path_rate=[0.], 
-                 sr_ratios=8, norm_layer=partial(nn.LayerNorm, eps=1e-6),
+                 sr_ratios=8, norm_layer=partial(nn.LayerNorm, eps=1e-6), 
+                 after_norm=nn.BatchNorm2d, use_after_norm=False
                  ):
         super().__init__()
         self.num_classes = num_classes
@@ -251,7 +252,11 @@ class RGBXTransformerBlock(nn.Module):
         self.IGMAVC = IGMAVC(dim=embed_dims, reduction=4)
         self.PCASC = PCASC(dim=embed_dims, num_heads=num_heads, qkv_bias=qkv_bias,
                            qk_scale=qk_scale, attn_drop=attn_drop_rate, proj_drop=drop_rate, sr_ratio=sr_ratios)
-
+        self.use_after_norm = use_after_norm
+        if self.use_after_norm:
+            self.after_norm = after_norm(embed_dims)
+            self.after_activate = nn.ReLU(inplace=True)
+        
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
@@ -291,4 +296,7 @@ class RGBXTransformerBlock(nn.Module):
     
     def forward_features(self, x, y):
         fuse_xy = self.PCASC(x, y)
+        if self.use_after_norm:
+            fuse_xy = self.after_norm(fuse_xy)
+            fuse_xy = self.after_activate(fuse_xy)
         return fuse_xy
