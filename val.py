@@ -127,7 +127,7 @@ class Evaluator(object):
                     results_filp = self.model(modal_x, modal_y)
                     out_filp = results_filp.out1[0]
                     out += out_filp.flip(-1)
-
+                
         return out
 
     def process_image(self, modal_x, modal_y, crop_size=None):
@@ -181,7 +181,7 @@ class Evaluator(object):
 def parse_args():
     parser = argparse.ArgumentParser(description='Test')
     parser.add_argument('--config',
-                        default="./config/MFNet_mit_b4_cross_att_search_freeze_Nash.yaml",
+                        default="./config/MFNet_mit_b4_cross_att_search_freeze_Nash_mixed.yaml",
                         help='train config file path')
     parser.add_argument(
         '--save-dir',
@@ -190,7 +190,7 @@ def parse_args():
     parser.add_argument(
         '--load-from',
         # default="/data/zxh/NAS_MRMTL_project/NAS_MRMTL/v1/pretrained/MFNet.ckpt",
-        default="./work_dirs/MFNet_mit_b4_cross_att_search_freeze_Nash/epoch-11.pth",
+        default="./work_dirs/MFNet_mit_b4_cross_att_search_freeze_Nash_mixed/latest.pth",
         help='the checkpoint file to resume from')
     args = parser.parse_args()
     return args
@@ -232,6 +232,7 @@ def main():
         state_dict = torch.load(args.load_from, map_location=torch.device('cpu'))
         # model.load_state_dict(state_dict, strict=True)
         model.load_state_dict(state_dict['model'], strict=True)
+        logger.info(args.load_from)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)

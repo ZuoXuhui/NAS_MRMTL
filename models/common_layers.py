@@ -6,31 +6,29 @@ import math
 from timm.models.layers import trunc_normal_
 from .net_utils import SelfAttention
     
-def batch_norm(num_features, eps=1e-3, momentum=0.05):
-    bn = nn.BatchNorm2d(num_features, eps, momentum)
+def batch_norm(norm_layer=nn.BatchNorm2d, num_features=64, eps=1e-3, momentum=0.05):
+    bn = norm_layer(num_features, eps, momentum)
     nn.init.constant_(bn.weight, 1)
     nn.init.constant_(bn.bias, 0)
     return bn
 
 
-def get_nddr_bn(cfg):
+def get_nddr_bn(cfg, norm_layer=nn.BatchNorm2d):
     if cfg.nddr.NDDR_BN_TYPE == 'default':
-        return lambda width: batch_norm(width, eps=1e-3, momentum=cfg.nddr.BATCH_NORM_MOMENTUM)
+        return lambda width: batch_norm(norm_layer, width, eps=1e-3, momentum=cfg.nddr.BATCH_NORM_MOMENTUM)
     else:
         raise NotImplementedError
         
 
-def get_nddr(cfg, in_channels, out_channels, nums_head, sr_ratio):
+def get_nddr(cfg, in_channels, out_channels, nums_head, sr_ratio, norm_layer=nn.BatchNorm2d):
     if cfg.nddr.SEARCHSPACE == '':
         assert in_channels == out_channels
         if cfg.nddr.NDDR_TYPE == '':
-            return NDDR(cfg, out_channels)
+            return NDDR(cfg, out_channels, norm_layer)
         elif cfg.nddr.NDDR_TYPE == 'cross_nddr':
-            return CrossNDDR(cfg, out_channels)
+            return CrossNDDR(cfg, out_channels, norm_layer)
         elif cfg.nddr.NDDR_TYPE == 'cross_attention':
-            return AttentionSearch(cfg, out_channels, nums_head, sr_ratio)
-        elif cfg.nddr.NDDR_TYPE == 'cross_attention_add':
-            return ADDAttentionSearch(cfg, out_channels, nums_head, sr_ratio)
+            return AttentionSearch(cfg, out_channels, nums_head, sr_ratio, norm_layer)
         elif cfg.nddr.NDDR_TYPE == 'single_side':
             return SingleSideNDDR(cfg, out_channels, False)
         elif cfg.nddr.NDDR_TYPE == 'single_side_reverse':
@@ -51,9 +49,9 @@ def get_nddr(cfg, in_channels, out_channels, nums_head, sr_ratio):
 
 
 class NDDR_Brige(nn.Module):
-    def __init__(self, cfg, out_channels):
+    def __init__(self, cfg, out_channels, norm_layer=nn.BatchNorm2d):
         super(NDDR_Brige, self).__init__()
-        norm = get_nddr_bn(cfg)
+        norm = get_nddr_bn(cfg, norm_layer=norm_layer)
 
         self.conv = nn.Conv2d(out_channels, out_channels, kernel_size=1, bias=False)
 
@@ -86,10 +84,10 @@ class CrossStitch(nn.Module):
     
     
 class NDDR(nn.Module):
-    def __init__(self, cfg, out_channels):
+    def __init__(self, cfg, out_channels, norm_layer=nn.BatchNorm2d):
         super(NDDR, self).__init__()
         init_weights = cfg.nddr.INIT
-        norm = get_nddr_bn(cfg)
+        norm = get_nddr_bn(cfg, norm_layer=norm_layer)
         
         self.conv1 = nn.Conv2d(out_channels * 2, out_channels, kernel_size=1, bias=False)
         self.conv2 = nn.Conv2d(out_channels * 2, out_channels, kernel_size=1, bias=False)
@@ -125,10 +123,10 @@ class NDDR(nn.Module):
 
 
 class CrossNDDR(nn.Module):
-    def __init__(self, cfg, out_channels):
+    def __init__(self, cfg, out_channels, norm_layer=nn.BatchNorm2d):
         super(CrossNDDR, self).__init__()
         init_weights = cfg.nddr.INIT
-        norm = get_nddr_bn(cfg)
+        norm = get_nddr_bn(cfg, norm_layer=norm_layer)
 
         self.conv1 = nn.Conv2d(out_channels * 2, out_channels, kernel_size=1, bias=False)
         self.conv2 = nn.Conv2d(out_channels * 2, out_channels, kernel_size=1, bias=False)
@@ -177,10 +175,10 @@ class CrossNDDR(nn.Module):
 
 
 class AttentionSearch(nn.Module):
-    def __init__(self, cfg, out_channels, num_heads=1, sr_ratio=1., attn_drop=0.0, proj_drop=0.0):
+    def __init__(self, cfg, out_channels, num_heads=1, sr_ratio=1., attn_drop=0.0, proj_drop=0.0, norm_layer=nn.BatchNorm2d):
         super(AttentionSearch, self).__init__()
         init_weights = cfg.nddr.INIT
-        norm = get_nddr_bn(cfg)
+        norm = get_nddr_bn(cfg, norm_layer=norm_layer)
 
         self.conv1 = nn.Conv2d(out_channels * 2, out_channels, kernel_size=1, bias=False)
         self.conv2 = nn.Conv2d(out_channels * 2, out_channels, kernel_size=1, bias=False)

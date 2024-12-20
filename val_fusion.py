@@ -17,7 +17,7 @@ from datasets import FusionDataset
 def parse_args():
     parser = argparse.ArgumentParser(description='Test')
     parser.add_argument('--config',
-                        default="./config/MFNet_mit_b4_nddr_task2_mask_loss_patch_sd_64_brighter_mosaic_grad_weights_higher_norm.yaml",
+                        default="./config/MFNet_mit_b4_nddr_task2_mask_loss_patch_sd_64_mosaic_grad_weights_higher_norm_lc.yaml",
                         help='train config file path')
     parser.add_argument('--data-dir',
                         default="/data1/ZXH/NAS_MRMTL_project/Dataset/MFNet/test/",
@@ -30,11 +30,11 @@ def parse_args():
                         help='test data visible path')
     parser.add_argument(
         '--save-dir',
-        default="./results_fusion/MFNet",
+        default="./results_fusion/MFNet_310",
         help='the dir to save logs and models')
     parser.add_argument(
         '--load-from',
-        default="./work_dirs/MFNet_mit_b4_nddr_task2_mask_loss_patch_sd_64_brighter_mosaic_grad_weights_higher_norm/epoch-500.pth",
+        default="./work_dirs/MFNet_mit_b4_nddr_task2_mask_loss_patch_sd_64_mosaic_grad_weights_higher_norm_lc_1/epoch-310.pth",
         # default="./pretrained/task2.pth",
         help='the checkpoint file to resume from')
     args = parser.parse_args()

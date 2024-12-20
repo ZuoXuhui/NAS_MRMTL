@@ -48,8 +48,8 @@ class SegTask:
     
 
 class FusionTask:
-    def __init__(self, weight):
-        self.fusion_loss = fusion_loss(weight)
+    def __init__(self, weight, method="MFNet", patch_size=64):
+        self.fusion_loss = fusion_loss(weight, method, patch_size)
 
     def loss(self, fus, img1, img2, Mask, label):
         return self.fusion_loss(fus, img1, img2, Mask, label)

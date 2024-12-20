@@ -254,6 +254,7 @@ class RGBXTransformerBlock(nn.Module):
                            qk_scale=qk_scale, attn_drop=attn_drop_rate, proj_drop=drop_rate, sr_ratio=sr_ratios)
         self.use_after_norm = use_after_norm
         if self.use_after_norm:
+            print("use after norm")
             self.after_norm = after_norm(embed_dims)
             self.after_activate = nn.ReLU(inplace=True)
         

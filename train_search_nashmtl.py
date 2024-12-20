@@ -167,6 +167,9 @@ def main():
     from datasets import Train_search_pipline as Train_pipline
     if cfg.datasets.dataset_name == "MFNetEnhance":
         from datasets import MFNetEnhanceDataset as RGBXDataset
+    elif cfg.datasets.dataset_name == "FMBEnhance":
+        from datasets import FMBEnhanceDataset as RGBXDataset
+    
     # set train dataset
     train_process = Train_pipline(cfg)
     train_dataset = RGBXDataset(cfg, train_process, stage="train")
@@ -190,6 +193,9 @@ def main():
     if args.local_rank == 0:
         if "MFNet" in cfg.datasets.dataset_name:
             from datasets import MFNetDataset as TestDataset
+        elif "FMB" in cfg.datasets.dataset_name:
+            from datasets import FMBDataset as TestDataset 
+        
         test_dataset = TestDataset(cfg, stage="test")
         logger.info(f'Load test datasets numbers: {len(test_dataset)}')
     
@@ -211,7 +217,7 @@ def main():
     else:
         raise NotImplementedError
     
-    optimizer = GradBlance(optimizer, n_tasks=2, device=device)
+    optimizer = GradBlance(optimizer, n_tasks=2, device=device, distributed=distributed, num_gpus=num_gpus)
 
     # config lr policy
     niters_per_epoch = len(train_dataset) // cfg.train.batch_size # will drop last ones
@@ -270,6 +276,10 @@ def main():
             
             task1_loss = results.loss1
             task2_loss = results.loss2
+
+            if distributed:
+                task1_loss = all_reduce_tensor(task1_loss, world_size=num_gpus)
+                task2_loss = all_reduce_tensor(task2_loss, world_size=num_gpus)
             
             optimizer.zero_grad()
             losses = torch.stack((task1_loss, task2_loss))
@@ -281,9 +291,6 @@ def main():
 
             for i in range(len(optimizer.param_groups)):
                 optimizer.param_groups[i]['lr'] = lr
-
-            if distributed:
-                loss = all_reduce_tensor(loss, world_size=num_gpus)
             
             sum_loss += loss.item()
             sum_task1_loss += task1_loss.item()
@@ -313,12 +320,15 @@ def main():
 
             if (epoch >= cfg.checkpoint.start_epoch) and (epoch % cfg.checkpoint.step == 0) or (epoch == cfg.train.nepochs):
                 model.eval()
-                task_metric = Evaluator(cfg, test_dataset, model, model.task1.task, device).evaluate()
+                if distributed:
+                    task_metric = Evaluator(cfg, test_dataset, model.module, model.module.task1.task, device).evaluate()
+                else:
+                    task_metric = Evaluator(cfg, test_dataset, model, model.task1.task, device).evaluate()
                 print_str = print_iou(task_metric, class_names=test_dataset.classes)
                 logger.info(print_str)
                 model.train()
 
-                if task_metric['Mean IoU'] >= best_iou:
+                if task_metric['Mean IoU'] >= best_iou or task_metric['Mean IoU'] >= 0.6095:
                     best_iou = task_metric['Mean IoU']
                     current_epoch_checkpoint = os.path.join(cfg.work_dir, f'epoch-{epoch}.pth')
                     logger.info("Saving checkpoint to file {}".format(current_epoch_checkpoint))

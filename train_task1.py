@@ -267,6 +267,9 @@ def main():
             
             loss = results.loss
 
+            if distributed:
+                loss = all_reduce_tensor(loss, world_size=num_gpus)
+
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -276,9 +279,6 @@ def main():
 
             for i in range(len(optimizer.param_groups)):
                 optimizer.param_groups[i]['lr'] = lr
-
-            if distributed:
-                loss = all_reduce_tensor(loss, world_size=num_gpus)
 
             sum_loss += loss.item()
             print_str = 'Epoch {}/{}'.format(epoch, cfg.train.nepochs) \

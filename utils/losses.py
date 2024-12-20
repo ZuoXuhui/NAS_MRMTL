@@ -192,40 +192,65 @@ class patch_loss(nn.Module):
 
 
 class mask_mse_loss:
-    def __init__(self, patch_size=32, ignore_idx=255):
+    def __init__(self, method="MFNet", patch_size=32, ignore_idx=255):
         self.patch_size = patch_size
         self.ignore_idx = ignore_idx
+        self.method = method
         
         self.l1_loss = nn.L1Loss()
         
-    def process_mask(self, mask):
-        mask[mask == self.ignore_idx] == 0
-        mask[mask > 0] = 255
-        mask = mask.detach().cpu().numpy().astype(np.uint8)
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # def process_mask(self, mask):
+    #     mask[mask == self.ignore_idx] = 0
+    #     if self.method == "MFNet":
+    #         mask[mask > 0] = 255
+    #     elif self.method == "FMB":
+    #         # mask[mask == 1] = 0
+    #         # mask[mask == 2] = 0
+    #         # mask[mask == 3] = 0
+    #         # mask[mask == 4] = 0
+    #         # mask[mask == 6] = 0
+    #         # mask[mask == 7] = 0
+    #         mask[mask > 0] = 255
+    #     mask = mask.detach().cpu().numpy().astype(np.uint8)
+    #     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
-        blurred_mask = np.zeros_like(mask, dtype=np.float32)
-        for contour in contours:
-            area = cv2.contourArea(contour)
+    #     blurred_mask = np.zeros_like(mask, dtype=np.float32)
+    #     for contour in contours:
+    #         area = cv2.contourArea(contour)
 
-            if area > 5000:
-                kernel_size = (15, 15)
-            elif area > 1000:
-                kernel_size = (7, 7)
-            else:
-                kernel_size = (3, 3)
+    #         if area > 5000:
+    #             kernel_size = (7, 7)
+    #         elif area > 1000:
+    #             kernel_size = (5, 5)
+    #         else:
+    #             kernel_size = (3, 3)
 
-            mask_region = np.zeros_like(mask, dtype=np.uint8)
-            cv2.drawContours(mask_region, [contour], -1, 255, thickness=cv2.FILLED)
+    #         mask_region = np.zeros_like(mask, dtype=np.uint8)
+    #         cv2.drawContours(mask_region, [contour], -1, 255, thickness=cv2.FILLED)
 
-            blurred_region = cv2.GaussianBlur(mask_region.astype(np.float32), kernel_size, 0)
+    #         blurred_region = cv2.GaussianBlur(mask_region.astype(np.float32), kernel_size, 0)
             
-            blurred_mask += blurred_region
+    #         blurred_mask += blurred_region
 
-        blurred_mask = blurred_mask / 255
-        blurred_mask = torch.tensor(blurred_mask)
+    #     blurred_mask = blurred_mask / 255
+    #     blurred_mask = torch.tensor(blurred_mask)
 
-        return blurred_mask
+    #     return blurred_mask
+
+    def process_mask(self, mask):
+        mask[mask == self.ignore_idx] = 0
+        if self.method == "MFNet":
+            mask[mask > 0] = 1
+        elif self.method == "FMB":
+            # mask[mask == 1] = 0
+            # mask[mask == 2] = 0
+            # mask[mask == 3] = 0
+            # mask[mask == 4] = 0
+            # mask[mask == 6] = 0
+            # mask[mask == 7] = 0
+            mask[mask > 0] = 1
+        
+        return mask
 
     def get_sd_weights(self, fuse, img1, img2, Mask):
         # patch_matrix  # (b, c, N, patch_size * patch_size)
@@ -249,17 +274,18 @@ class mask_mse_loss:
         # SD, b1 * c1 * n1 * 1
         sd1 = torch.sqrt(torch.sum(((patch_img1 - mu1_re) ** 2), dim=3) / p1)
         sd2 = torch.sqrt(torch.sum(((patch_img2 - mu2_re) ** 2), dim=3) / p2)
-
-        sd1 = torch.mean(sd1, dim=1)
-        sd2 = torch.mean(sd2, dim=1)
+        sd1 = torch.mean(sd1, dim=(1, 2))
+        sd2 = torch.mean(sd2, dim=(1, 2))
         
         w1 = sd1 / (sd1 + sd2 + 1e-6)
         w2 = sd2 / (sd1 + sd2 + 1e-6)
 
-        w1 = w1.view(b1, 1, 1, 1)
-        w2 = w2.view(b2, 1, 1, 1)
-
         return w1, w2
+    
+    def batch_l1_loss(self, img1, img2, weights):
+        loss = torch.abs(img1 - img2)
+        mean_loss = torch.mean(loss, dim=(1, 2, 3)) * weights
+        return mean_loss.mean()
 
     def __call__(self, fuse, img1, img2, Label, Mask):
         Label = Label.float()
@@ -275,22 +301,21 @@ class mask_mse_loss:
         Y_fuse = 0.299 * fuse[:, 0:1] + 0.587 * fuse[:, 1:2] + 0.114 * fuse[:, 2:3]
         Y_img1 = 0.299 * img1[:, 0:1] + 0.587 * img1[:, 1:2] + 0.114 * img1[:, 2:3]
         Y_img2 = 0.299 * img2[:, 0:1] + 0.587 * img2[:, 1:2] + 0.114 * img2[:, 2:3]
-        sd1, sd2 = self.get_sd_weights(Y_fuse, Y_img1, Y_img2, Mask)
+        w1, w2 = self.get_sd_weights(Y_fuse, Y_img1, Y_img2, Mask)
 
-        joint_int = mask * torch.maximum(img1, img2) + (1 - mask) * (sd1*img1 + sd2*img2)
+        loss_in = self.l1_loss(mask * fuse, mask * torch.maximum(img1, img2))
+        loss_ou = self.batch_l1_loss((1 - mask) * fuse, (1 - mask) * img1, w1) + self.batch_l1_loss((1 - mask) * fuse, (1 - mask) * img2, w2)
 
-        loss = self.l1_loss(fuse, joint_int)
-
+        loss = loss_in + loss_ou
+        
         return loss
 
 
 class fusion_loss:
-    def __init__(self, weight):
+    def __init__(self, weight, method="MFNet", patch_size=64):
         self.weight = weight
         self.l1_loss = nn.L1Loss()
-        self.mask_loss = mask_mse_loss(64)
-        # self.patch_loss = patch_loss(64)
-        # self.std_loss = std_loss()
+        self.mask_loss = mask_mse_loss(method=method, patch_size=patch_size)
         
     def __call__(self, fuse, img1, img2, Mask, label):
         ## img1 is RGB, img2 is Gray
@@ -308,16 +333,9 @@ class fusion_loss:
         img1_grad_x, img1_grad_y = combine_sobel_xy(img1)
         img2_grad_x, img2_grad_y = combine_sobel_xy(img2)
 
-        # fuse_grad_x, fuse_grad_y = Sobelxy(YCbCr_fuse[:,0:1,:,:])
-        # img1_grad_x, img1_grad_y = Sobelxy(YCbCr_img1[:,0:1,:,:])
-        # img2_grad_x, img2_grad_y = Sobelxy(img2[:,0:1,:,:])
-
         joint_grad_x = torch.maximum(img1_grad_x, img2_grad_x)
         joint_grad_y = torch.maximum(img1_grad_y, img2_grad_y)
 
-        # con_loss = self.l1_loss(Y_fuse, torch.maximum(Y_img1, img2[:,0:1,:,:]))
-        # con_loss = self.patch_loss(Y_fuse, Y_img1, img2[:,0:1,:,:], Mask)
-        # con_loss = self.std_loss(Y_fuse, Y_img1, img2[:,0:1,:,:])
         con_loss = self.mask_loss(fuse, img1, img2, label, Mask)
         gradient_loss = self.l1_loss(fuse_grad_x, joint_grad_x) + self.l1_loss(fuse_grad_y, joint_grad_y)
         color_loss = self.l1_loss(Cr_fuse, Cr_img1) + self.l1_loss(Cb_fuse, Cb_img1)

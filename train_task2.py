@@ -10,6 +10,7 @@ import numpy as np
 
 import torch
 import torch.nn as nn
+import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
 
 import mmcv
@@ -18,11 +19,25 @@ from omegaconf import OmegaConf
 from utils.loggers import get_root_logger
 from utils.init_func import group_weight
 from utils.lr_policy import WarmUpPolyLR
-from utils.visualization import print_iou
+from utils.pyt_utils import all_reduce_tensor
 
 from tensorboardX import SummaryWriter
 
-from val import Evaluator
+# CUDA_VISIBLE_DEVICES=1,2 python3 -m torch.distributed.launch --nproc_per_node 2 train_task2.py
+
+def synchronize():
+    """
+    Helper function to synchronize (barrier) among all processes when
+    using distributed training
+    """
+    if not dist.is_available():
+        return
+    if not dist.is_initialized():
+        return
+    world_size = dist.get_world_size()
+    if world_size == 1:
+        return
+    dist.barrier()
 
 
 def set_random_seed(seed, deterministic=False):
@@ -46,7 +61,7 @@ def set_random_seed(seed, deterministic=False):
 def parse_args():
     parser = argparse.ArgumentParser(description='Train')
     parser.add_argument('--config',
-                        default="./config/MFNet_mit_b4_nddr_task2_mask_loss_patch_sd_64_brighter_mosaic_grad_weights_higher_norm.yaml",
+                        default="./config/FMB_mit_b4_nddr_task2_mask_loss_patch_sd_64_mosaic_grad_weights_higher_norm.yaml",
                         help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(
@@ -54,7 +69,7 @@ def parse_args():
         help='the pretrained ckpt file to load from')
     parser.add_argument(
         '--resume-from',
-        # default="./work_dirs/MFNet_mit_b4_nddr_task2_mask_loss_patch_sd_64_brighter_mosaic_grad_weights_tanh/latest.pth",
+        # default="./work_dirs/MFNet_mit_b4_nddr_task2_mask_loss_patch_sd_64_mosaic_grad_weights_higher_norm_lc/latest.pth",
         help='the checkpoint file to resume from')
     group_gpus = parser.add_mutually_exclusive_group()
     group_gpus.add_argument(
@@ -69,6 +84,7 @@ def parse_args():
         help='ids of gpus to use '
         '(only applicable to non-distributed training)')
     parser.add_argument('--seed', type=int, default=12345, help='random seed')
+    parser.add_argument("--port", type=int, default=29501)
     parser.add_argument(
         '--deterministic',
         action='store_true',
@@ -99,37 +115,47 @@ def main():
         
     if args.resume_from is not None:
         cfg.resume_from = args.resume_from
-    if args.gpu_ids is not None:
-        cfg.gpu_ids = args.gpu_ids
-    else:
-        cfg.gpu_ids = [0] if args.gpus is None else range(args.gpus)
-        
-    # create work_dir
-    mmcv.mkdir_or_exist(os.path.abspath(cfg.work_dir))
-    # dump config
-    OmegaConf.save(cfg, os.path.join(cfg.work_dir, os.path.basename(args.config)), resolve=True)
-    # init the logger before other steps
-    timestamp = time.strftime('%Y%m%d_%H%M%S', time.localtime())
-    log_file = os.path.join(cfg.work_dir, f'{timestamp}.log')
-    logger = get_root_logger(log_file=log_file, log_level=cfg.log_level)
-    logger.info(cfg)
+    
+    num_gpus = int(os.environ['WORLD_SIZE']) if "WORLD_SIZE" in os.environ else 1
+    distributed = num_gpus > 1
 
-    # tb
-    tb_dir =  os.path.join(cfg.work_dir, f'{timestamp}', "tb")
-    writer = SummaryWriter(log_dir=tb_dir)
+    print(args.local_rank)
+    if distributed:
+        torch.cuda.set_device(args.local_rank)
+        # os.environ['MASTER_PORT'] = str(args.port)
+        torch.distributed.init_process_group(
+            backend="nccl", init_method="env://", rank=args.local_rank
+        )
+        synchronize()
+    
+    if args.local_rank == 0:
+        # create work_dir
+        mmcv.mkdir_or_exist(os.path.abspath(cfg.work_dir))
+        # dump config
+        OmegaConf.save(cfg, os.path.join(cfg.work_dir, os.path.basename(args.config)), resolve=True)
+        # init the logger before other steps
+        timestamp = time.strftime('%Y%m%d_%H%M%S', time.localtime())
+        log_file = os.path.join(cfg.work_dir, f'{timestamp}.log')
+        logger = get_root_logger(log_file=log_file, log_level=cfg.log_level)
+        logger.info(cfg)
+
+        # tb
+        tb_dir =  os.path.join(cfg.work_dir, f'{timestamp}', "tb")
+        writer = SummaryWriter(log_dir=tb_dir)
 
     meta = dict()
     # set random seeds
     if args.seed is not None:
-        logger.info(f'Set random seed to {args.seed}, deterministic: '
-                    f'{args.deterministic}')
+        if args.local_rank == 0:
+            logger.info(f'Set random seed to {args.seed}, deterministic: '
+                        f'{args.deterministic}')
         set_random_seed(args.seed, deterministic=args.deterministic)
+    
     cfg.seed = args.seed
     meta['seed'] = args.seed
     meta['exp_name'] = os.path.basename(args.config)
 
     # set training model
-    distributed = False
     if distributed:
         BatchNorm2d = nn.SyncBatchNorm
     else:
@@ -138,24 +164,33 @@ def main():
     from models import FusionTaskNet
     model = FusionTaskNet(cfg, norm_layer=BatchNorm2d)
     
-    logger.info(f"{cfg.arch} model init done")
+    if args.local_rank == 0:
+        logger.info(f"{cfg.arch} model init done")
 
     # set dataloader
     from datasets import Train_pipline
     if cfg.datasets.dataset_name == "MFNetEnhance":
         from datasets import MFNetEnhanceDataset as RGBXDataset
+    elif cfg.datasets.dataset_name == "FMBEnhance":
+        from datasets import FMBEnhanceDataset as RGBXDataset
 
     train_process = Train_pipline(cfg)
     train_dataset = RGBXDataset(cfg, train_process, stage="train")
+    if distributed:
+        train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
+    else:
+        train_sampler = None
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
-        batch_size=cfg.train.batch_size,
+        batch_size=cfg.train.batch_size if not distributed else cfg.train.batch_size // num_gpus,
         num_workers=cfg.train.num_workers,
         drop_last=True,
-        shuffle=True,
+        shuffle=False if distributed else True,
         pin_memory=True,
+        sampler=train_sampler
         )
-    logger.info(f'Load train datasets numbers: {len(train_dataset)}')
+    if args.local_rank == 0:
+        logger.info(f'Load train datasets numbers: {len(train_dataset)}')
 
     # set optimizer
     base_lr = cfg.train.lr
@@ -175,11 +210,10 @@ def main():
     total_iteration = cfg.train.nepochs * niters_per_epoch
     lr_policy = WarmUpPolyLR(base_lr, cfg.train.lr_power, total_iteration, niters_per_epoch * cfg.train.warm_up_epoch)
     
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
     if distributed:
-        logger.info('.............distributed training.............')
-    else:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model.to(device)
+        model=torch.nn.DataParallel(model)
     
     # resume training
     state_epoch = 0
@@ -188,12 +222,17 @@ def main():
         state_epoch = state_dict['epoch'] + 1
         model.load_state_dict(state_dict['model'], strict=True)
         optimizer.load_state_dict(state_dict['optimizer'])
-        logger.info(f"Resume checkpoint from {args.resume_from}")
+        if args.local_rank == 0:
+            logger.info(f"Resume checkpoint from {args.resume_from}")
 
     optimizer.zero_grad()
     model.train()
-    logger.info('begin trainning:')
+    if args.local_rank == 0:
+        logger.info('begin trainning:')
     for epoch in range(state_epoch, cfg.train.nepochs+1):
+        if distributed:
+            train_sampler.set_epoch(epoch)  # steps is used to seed RNG
+        
         bar_format = '{desc}[{elapsed}<{remaining},{rate_fmt}]'
         pbar = tqdm(range(niters_per_epoch), file=sys.stdout,
                     bar_format=bar_format)
@@ -217,8 +256,15 @@ def main():
             label_y = label_y.cuda(non_blocking=True)
             Mask = Mask.cuda(non_blocking=True)
 
-            results = model.loss(modal_x, modal_y, label_x, label_y, Mask, label)
+            if distributed:
+                results = model.module.loss(modal_x, modal_y, label_x, label_y, Mask, label)
+            else:
+                results = model.loss(modal_x, modal_y, label_x, label_y, Mask, label)
+            
             loss = results.loss
+
+            if distributed:
+                loss = all_reduce_tensor(loss, world_size=num_gpus)
 
             optimizer.zero_grad()
             loss.backward()
@@ -229,7 +275,7 @@ def main():
 
             for i in range(len(optimizer.param_groups)):
                 optimizer.param_groups[i]['lr'] = lr
-
+            
             sum_loss += loss
             print_str = 'Epoch {}/{}'.format(epoch, cfg.train.nepochs) \
                     + ' Iter {}/{}:'.format(idx + 1, niters_per_epoch) \
@@ -240,21 +286,22 @@ def main():
         if (distributed and (args.local_rank == 0)) or (not distributed):
             writer.add_scalar('train_loss', sum_loss / len(pbar), epoch)
     
-        latest_epoch_checkpoint = os.path.join(cfg.work_dir, f'latest.pth')
-        state_dict = model.module.state_dict() if distributed else model.state_dict()
-        checkpoint = {
-            'model': state_dict,
-            'optimizer': optimizer.state_dict(),
-            'epoch': epoch
-        }
-        torch.save(checkpoint, latest_epoch_checkpoint)
+            latest_epoch_checkpoint = os.path.join(cfg.work_dir, f'latest.pth')
+            state_dict = model.module.state_dict() if distributed else model.state_dict()
+            checkpoint = {
+                'model': state_dict,
+                'optimizer': optimizer.state_dict(),
+                'epoch': epoch
+            }
+            torch.save(checkpoint, latest_epoch_checkpoint)
 
-        if (epoch >= cfg.checkpoint.start_epoch) and (epoch % cfg.checkpoint.step == 0) or (epoch == cfg.train.nepochs):
-            current_epoch_checkpoint = os.path.join(cfg.work_dir, f'epoch-{epoch}.pth')
-            logger.info("Saving checkpoint to file {}".format(current_epoch_checkpoint))
-            torch.save(checkpoint, current_epoch_checkpoint)
+            if (epoch >= cfg.checkpoint.start_epoch) and (epoch % cfg.checkpoint.step == 0) or (epoch == cfg.train.nepochs):
+                current_epoch_checkpoint = os.path.join(cfg.work_dir, f'epoch-{epoch}.pth')
+                logger.info("Saving checkpoint to file {}".format(current_epoch_checkpoint))
+                torch.save(checkpoint, current_epoch_checkpoint)
 
-        del state_dict, checkpoint
+            del state_dict, checkpoint
+        
         torch.cuda.empty_cache()
 
 

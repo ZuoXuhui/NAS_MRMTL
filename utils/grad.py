@@ -11,6 +11,8 @@ import torch.optim as optim
 
 import cvxpy as cp
 
+from .pyt_utils import all_reduce_tensor
+
 class GradBlance():
     def __init__(
         self,
@@ -20,6 +22,8 @@ class GradBlance():
         max_norm: float = 1.0,
         update_weights_every: int = 1,
         optim_niter=20,
+        distributed=False,
+        num_gpus=1,
     ):
         self._optim = optimizer
 
@@ -36,6 +40,9 @@ class GradBlance():
         self.init_gtg = np.eye(self.n_tasks)
         self.global_step = 0.0
         self.prvs_alpha = np.ones(self.n_tasks, dtype=np.float32)
+
+        self.distributed = distributed
+        self.num_gpus = num_gpus
 
         return
 
@@ -92,6 +99,9 @@ class GradBlance():
         '''
         grads, shapes, share = self._pack_grad(losses)
         loss = self.get_weighted_loss(losses, grads, share)
+        if self.distributed:
+            loss = all_reduce_tensor(loss, world_size=self.num_gpus)
+
         loss.backward()
 
         pc_grads, grad_conflict = self._project_conflicting(grads, share)

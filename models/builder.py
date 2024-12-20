@@ -92,7 +92,7 @@ class FusionTaskNet(nn.Module):
     def __init__(self, cfg, norm_layer=nn.BatchNorm2d):
         super(FusionTaskNet, self).__init__()
         ## task auxiliary training
-        self.task = FusionTask(cfg.weights.task2)
+        self.task = FusionTask(cfg.weights.task2, cfg.loss.method, cfg.loss.patch_size)
         ## params
         self.cfg = cfg
         ## define network
@@ -123,7 +123,7 @@ class FusionTaskNet(nn.Module):
             encoders.append(encoder)
         self.encoders = nn.ModuleList(encoders)
         # decoder
-        self.decoder = CNNHead(in_channels=cfg.decoder.channels)
+        self.decoder = CNNHead(in_channels=cfg.decoder.channels, norm_layer=norm_layer)
         self._step = 0
         # load from
         self.init_weights(cfg.get('load_from', None))
@@ -191,7 +191,7 @@ class NDDRTaskNet(nn.Module):
         nddrs = []
         for stage_id in range(self.num_stages):
             out_channels = embed_dims[stage_id]
-            nddr = get_nddr(cfg, out_channels, out_channels, cfg.encoder.num_heads[stage_id], cfg.encoder.sr_ratios[stage_id])
+            nddr = get_nddr(cfg, out_channels, out_channels, cfg.encoder.num_heads[stage_id], cfg.encoder.sr_ratios[stage_id], norm_layer=norm_layer)
             nddrs.append(nddr)
         self.nddrs = nn.ModuleList(nddrs)
         

@@ -1,10 +1,8 @@
 in_chans: 3
 num_classes: 9
-arch: "NAS_Task"
+arch: "Task2"
 backbone: 'mit_b4'
 log_level: 'INFO'
-load_task1: "./pretrained/MFNet/task1.pth"
-load_task2: "./pretrained/MFNet/task2.pth"
 
 datasets:
   dataset_name: "MFNetEnhance"
@@ -39,13 +37,6 @@ encoder:
   attn_drop_rate: 0.0
   drop_path_rate: 0.1
 
-nddr:
-  SEARCHSPACE: ''
-  NDDR_TYPE: 'cross_attention'
-  NDDR_BN_TYPE: 'default'
-  BATCH_NORM_MOMENTUM: 0.05
-  INIT: [1.0, 0.0]
-
 decoder:
   channels: [64, 128, 320, 512]
   embed_dim: 512
@@ -53,8 +44,6 @@ decoder:
 optimizer: "AdamW"
 
 weights:
-  FACTOR: 1
-  task1: [1, 1]
   task2: [0.5, 2, 2]
 
 loss:
@@ -62,7 +51,7 @@ loss:
   method: "MFNet"
 
 train:
-  lr: 5e-6
+  lr: 6e-5
   lr_power: 0.9
   momentum: 0.9
   weight_decay: 0.01
@@ -71,8 +60,11 @@ train:
   num_workers: 4
   
   nepochs: 5000
-  warm_up_epoch: 0
+  warm_up_epoch: 10
   train_scale_array: [0.5, 0.75, 1, 1.25, 1.5, 1.75]
+  Mask:
+   size: 32
+   strategy: "none"
 
   fix_bias: True
   bn_eps: 1e-3
@@ -85,5 +77,5 @@ eval:
   eval_crop_size: [480, 640]
 
 checkpoint:
-  start_epoch: 0
-  step: 2
+  start_epoch: 50
+  step: 10

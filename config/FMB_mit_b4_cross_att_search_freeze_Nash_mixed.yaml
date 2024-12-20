@@ -1,16 +1,16 @@
 in_chans: 3
-num_classes: 9
+num_classes: 15
 arch: "NAS_Task"
 backbone: 'mit_b4'
 log_level: 'INFO'
-load_task1: "./pretrained/MFNet/task1.pth"
-load_task2: "./pretrained/MFNet/task2.pth"
+load_task1: "./pretrained/FMB/task1.pth"
+load_task2: "./pretrained/FMB/task2.pth"
 
 datasets:
-  dataset_name: "MFNetEnhance"
-  image_height: 480
-  image_width: 640
-  root: "/data1/ZXH/NAS_MRMTL_project/Dataset/MFNet/"
+  dataset_name: "FMBEnhance"
+  image_height: 600
+  image_width: 800
+  root: "/data1/ZXH/NAS_MRMTL_project/Dataset/FMB/"
   path1: "visible"
   path1_HQ: "visible_HQ"
   path1_suffix: ".png"
@@ -21,7 +21,7 @@ datasets:
   label_suffix: ".png"
   split: null
   ignore_index: 255
-  class_names: ['unlabeled', 'car', 'person', 'bike', 'curve', 'car_stop', 'guardrail', 'color_cone', 'bump']
+  class_names: ['background', 'Road', 'Sidewalk', 'Building', 'Lamp', 'Sign', 'Vegetation', 'Sky', 'Person', 'Car', 'Truck', 'Bus', 'Motorcycle', 'Bicycle', 'Pole']
 
 num_stages: 4
 encoder:
@@ -58,8 +58,8 @@ weights:
   task2: [0.5, 2, 2]
 
 loss:
-  patch_size: 64
-  method: "MFNet"
+  patch_size: 80
+  method: "FMB"
 
 train:
   lr: 5e-6
@@ -82,8 +82,8 @@ eval:
   eval_stride_rate: 2/3
   eval_scale_array: [1]
   eval_flip: False
-  eval_crop_size: [480, 640]
+  eval_crop_size: [600, 800]
 
 checkpoint:
   start_epoch: 0
-  step: 2
+  step: 1
