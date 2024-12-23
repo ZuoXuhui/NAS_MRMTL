@@ -78,4 +78,4 @@ eval:
 
 checkpoint:
   start_epoch: 50
-  step: 5
+  step: 10

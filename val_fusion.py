@@ -17,10 +17,10 @@ from datasets import FusionDataset
 def parse_args():
     parser = argparse.ArgumentParser(description='Test')
     parser.add_argument('--config',
-                        default="./config/MFNet_mit_b4_nddr_task2_mask_loss_patch_sd_64_mosaic_grad_weights_higher_norm_lc.yaml",
+                        default="./config/FMB_mit_b4_nddr_task2_mask_loss_patch_sd_64_mosaic_grad_weights_higher_norm.yaml",
                         help='train config file path')
     parser.add_argument('--data-dir',
-                        default="/data1/ZXH/NAS_MRMTL_project/Dataset/MFNet/test/",
+                        default="/data1/ZXH/NAS_MRMTL_project/Dataset/FMB/test/",
                         help='test data root')
     parser.add_argument('--modal-x',
                         default="visible",
@@ -30,11 +30,11 @@ def parse_args():
                         help='test data visible path')
     parser.add_argument(
         '--save-dir',
-        default="./results_fusion/MFNet_310",
+        default="./results_fusion/FMB",
         help='the dir to save logs and models')
     parser.add_argument(
         '--load-from',
-        default="./work_dirs/MFNet_mit_b4_nddr_task2_mask_loss_patch_sd_64_mosaic_grad_weights_higher_norm_lc_1/epoch-310.pth",
+        default="./work_dirs/FMB_mit_b4_nddr_task2_mask_loss_patch_sd_64_mosaic_grad_weights_higher_norm/epoch-350.pth",
         # default="./pretrained/task2.pth",
         help='the checkpoint file to resume from')
     args = parser.parse_args()
@@ -83,7 +83,7 @@ def main():
     ndata = len(test_dataset)
     with torch.no_grad():
         for idx in tqdm(range(ndata)):
-            modal_x, modal_y, filename = test_dataset[idx]
+            modal_x, modal_y, image_size, filename = test_dataset[idx]
 
             modal_x = modal_x.to(device)
             modal_y = modal_y.to(device)
@@ -92,6 +92,8 @@ def main():
             out = results.out2[0]
 
             out = out.cpu().numpy().transpose([1, 2, 0])
+            # recover from padding
+            out = out[32:image_size[0]+32, 32:image_size[1]+32]
             # out = (out - out.min()) / (out.max() - out.min())
             out = np.array(out * 255, dtype=np.uint8)
             out = cv2.cvtColor(out, cv2.COLOR_RGB2BGR)

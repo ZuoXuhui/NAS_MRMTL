@@ -198,56 +198,17 @@ class mask_mse_loss:
         self.method = method
         
         self.l1_loss = nn.L1Loss()
-        
-    # def process_mask(self, mask):
-    #     mask[mask == self.ignore_idx] = 0
-    #     if self.method == "MFNet":
-    #         mask[mask > 0] = 255
-    #     elif self.method == "FMB":
-    #         # mask[mask == 1] = 0
-    #         # mask[mask == 2] = 0
-    #         # mask[mask == 3] = 0
-    #         # mask[mask == 4] = 0
-    #         # mask[mask == 6] = 0
-    #         # mask[mask == 7] = 0
-    #         mask[mask > 0] = 255
-    #     mask = mask.detach().cpu().numpy().astype(np.uint8)
-    #     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
-    #     blurred_mask = np.zeros_like(mask, dtype=np.float32)
-    #     for contour in contours:
-    #         area = cv2.contourArea(contour)
-
-    #         if area > 5000:
-    #             kernel_size = (7, 7)
-    #         elif area > 1000:
-    #             kernel_size = (5, 5)
-    #         else:
-    #             kernel_size = (3, 3)
-
-    #         mask_region = np.zeros_like(mask, dtype=np.uint8)
-    #         cv2.drawContours(mask_region, [contour], -1, 255, thickness=cv2.FILLED)
-
-    #         blurred_region = cv2.GaussianBlur(mask_region.astype(np.float32), kernel_size, 0)
-            
-    #         blurred_mask += blurred_region
-
-    #     blurred_mask = blurred_mask / 255
-    #     blurred_mask = torch.tensor(blurred_mask)
-
-    #     return blurred_mask
 
     def process_mask(self, mask):
         mask[mask == self.ignore_idx] = 0
         if self.method == "MFNet":
             mask[mask > 0] = 1
         elif self.method == "FMB":
-            # mask[mask == 1] = 0
-            # mask[mask == 2] = 0
-            # mask[mask == 3] = 0
-            # mask[mask == 4] = 0
-            # mask[mask == 6] = 0
-            # mask[mask == 7] = 0
+            mask[mask == 1] = 0
+            mask[mask == 2] = 0
+            mask[mask == 3] = 0
+            mask[mask == 6] = 0
+            mask[mask == 7] = 0
             mask[mask > 0] = 1
         
         return mask

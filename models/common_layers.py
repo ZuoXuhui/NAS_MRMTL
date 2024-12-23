@@ -24,11 +24,11 @@ def get_nddr(cfg, in_channels, out_channels, nums_head, sr_ratio, norm_layer=nn.
     if cfg.nddr.SEARCHSPACE == '':
         assert in_channels == out_channels
         if cfg.nddr.NDDR_TYPE == '':
-            return NDDR(cfg, out_channels, norm_layer)
+            return NDDR(cfg, out_channels, norm_layer=norm_layer)
         elif cfg.nddr.NDDR_TYPE == 'cross_nddr':
-            return CrossNDDR(cfg, out_channels, norm_layer)
+            return CrossNDDR(cfg, out_channels, norm_layer=norm_layer)
         elif cfg.nddr.NDDR_TYPE == 'cross_attention':
-            return AttentionSearch(cfg, out_channels, nums_head, sr_ratio, norm_layer)
+            return AttentionSearch(cfg, out_channels, nums_head, sr_ratio, norm_layer=norm_layer)
         elif cfg.nddr.NDDR_TYPE == 'single_side':
             return SingleSideNDDR(cfg, out_channels, False)
         elif cfg.nddr.NDDR_TYPE == 'single_side_reverse':

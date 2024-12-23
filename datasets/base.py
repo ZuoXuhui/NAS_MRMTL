@@ -52,19 +52,22 @@ class FusionDataset(Dataset):
     @staticmethod
     def process_imgs(img):
         img = normalize(img)
+        # reflect padding
+        img = np.pad(img, pad_width=((32, 32), (32, 32), (0, 0)), mode='reflect')
         img = img.transpose(2, 0, 1)
-        img = np.ascontiguousarray(img[None, :, :, :], dtype=np.float32)
-        img = torch.FloatTensor(img)
+        img = torch.from_numpy(np.ascontiguousarray(img[None, :, :, :])).float()
         return img
     
     def __getitem__(self, idx):
         image_info = self.img_infos[idx]
-        img1 = self._open_image(image_info["path1"])
-        img2 = self._open_image(image_info["path2"])
+        img1 = self._open_image(image_info["path1"], dtype=np.uint8)
+        img2 = self._open_image(image_info["path2"], dtype=np.uint8)
+
+        image_size = img1.shape[:-1]
 
         img1 = self.process_imgs(img1)
         img2 = self.process_imgs(img2)
-        return img1, img2, image_info["filename"]
+        return img1, img2, image_size, image_info["filename"]
 
 
 class CustomDataset(Dataset):

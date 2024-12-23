@@ -27,7 +27,7 @@ from tensorboardX import SummaryWriter
 
 from val import Evaluator
 
-# CUDA_VISIBLE_DEVICES=1,2 python3 -m torch.distributed.launch --nproc_per_node 2 train_search.py
+# CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch --nproc_per_node 2 train_search_nashmtl.py
 
 def synchronize():
     """
@@ -65,7 +65,7 @@ def set_random_seed(seed, deterministic=False):
 def parse_args():
     parser = argparse.ArgumentParser(description='Train')
     parser.add_argument('--config',
-                        default="./config/MFNet_mit_b4_cross_att_search_freeze_Nash_mixed.yaml",
+                        default="./config/FMB_mit_b4_cross_att_search_freeze_Nash_mixed.yaml",
                         help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(

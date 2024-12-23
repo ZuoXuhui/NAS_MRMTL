@@ -69,7 +69,7 @@ def parse_args():
         help='the pretrained ckpt file to load from')
     parser.add_argument(
         '--resume-from',
-        # default="./work_dirs/MFNet_mit_b4_nddr_task2_mask_loss_patch_sd_64_mosaic_grad_weights_higher_norm_lc/latest.pth",
+        # default="./work_dirs/FMB_mit_b4_nddr_task2_mask_loss_patch_sd_64_mosaic_grad_weights_higher_norm/latest.pth",
         help='the checkpoint file to resume from')
     group_gpus = parser.add_mutually_exclusive_group()
     group_gpus.add_argument(
